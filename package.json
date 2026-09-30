@@ -1,0 +1,17 @@
+{
+  "name": "paper-trader",
+  "version": "1.0.0",
+  "description": "Automated intraday paper trading for NSE stocks with a morning stock plan, opening-range breakout entries, stop loss, target and trailing stop. No real money, no dependencies.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "live": "MODE=live node server.js",
+    "replay": "MODE=replay node server.js",
+    "demo": "MODE=demo node server.js",
+    "backtest": "node backtest.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}
