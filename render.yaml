@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: paper-trader
+    env: node
+    plan: free
+    buildCommand: ""
+    startCommand: node server.js
+    envVars:
+      - key: MODE
+        value: live
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CAPITAL
+        value: 20000
+      - key: RISK_PCT
+        value: 1
+      - key: LEVERAGE
+        value: 1
