@@ -30,6 +30,14 @@ setInterval(async () => {
   if (starting) await engine.poll();
 }, cfg.mode === 'live' ? 20000 : 1000);
 
+// Render sends SIGTERM on every redeploy or restart: write everything out before exiting.
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, async () => {
+    try { await engine.flush(); await engine.save(); } catch (e) { console.error('Shutdown save failed:', e.message); }
+    process.exit(0);
+  });
+}
+
 const send = (res, code, type, body) => { res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store' }); res.end(body); };
 
 http.createServer((req, res) => {

@@ -57,3 +57,9 @@ In live mode with Upstash Redis (or a local `data/` folder) the bot keeps, separ
 - `candles:YYYY-MM-DD`: the day's 1-minute candles for every stock watched, so changed rules can be re-tested on the same prices later.
 
 Download: `/api/export/trades.csv`, `/api/export/trades.json`, `/api/export/days.json`, `/api/export/candles.json?day=YYYY-MM-DD`. Set `STRATEGY_VERSION` when you change rules, so results can be compared per version. If the server crashes at the wrong moment a trade can be logged twice; dedupe on `day` + `id`.
+
+## Backup stocks
+When a picked stock's setup dies with no trade, the bot tries backups. Each backup is first checked against today's prices and skipped if its setup is already dead. No backup is tried after `REPLACE_UNTIL` (default `10:30` IST), because late backups rarely have a live setup. Backups per slot: `REPLACE_CANDIDATES` (default 3).
+
+## Restarts
+In live mode the full state (open positions with their stops and entry context, plans, news verdicts, pending backups, journal) is saved after every poll and on shutdown (SIGTERM). After a restart the bot reloads it, re-fetches today's candles and catches up on any stop or target hit while it was down.

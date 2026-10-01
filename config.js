@@ -1,4 +1,5 @@
 // All settings can be overridden with environment variables, e.g.  CAPITAL=50000 LEVERAGE=5 npm start
+const hm = (k, d) => { const m = /^(\d{1,2}):(\d{2})$/.exec(process.env[k] || ''); return m ? +m[1] * 60 + +m[2] : d; };
 const num = (k, d) => (process.env[k] !== undefined && !isNaN(+process.env[k]) ? +process.env[k] : d);
 
 module.exports = {
@@ -48,6 +49,7 @@ module.exports = {
   indexSymbol: '^NSEI',                    // Nifty 50, used as a market filter
   shortlistSize: num('SHORTLIST', 6),
   backupPoolSize: num('BACKUPS', 15),       // deep bench to replace a stock whose setup dies with no trade
+  replaceUntilMin: hm('REPLACE_UNTIL', 10 * 60 + 30), // no backup is tried for a dead slot after this time (HH:MM IST)
   replaceCandidates: num('REPLACE_CANDIDATES', 3), // backups queued per dead slot, all checked with one pasted reply
   minAtrPct: 1.0,                          // need enough daily movement to be worth trading
   maxAtrPct: 4.5,
