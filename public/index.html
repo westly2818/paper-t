@@ -175,7 +175,7 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     </section>
     </div>
     <div class="panel" data-panel="trades">
-      <section class="card" id="cClosed"><h2>Closed trades</h2><div id="closed"></div><p class="why" style="margin-top:10px">Full history for analysis (kept forever): <a href="/api/export/trades.csv">all trades CSV</a> · <a href="/api/export/trades.json">JSON</a> · <a href="/api/export/days.json">daily log</a> · day candles: /api/export/candles.json?day=YYYY-MM-DD</p></section>
+      <section class="card" id="cClosed"><h2>Closed trades</h2><div id="closed"></div><p class="why" style="margin-top:10px">Full history for analysis (kept forever): <a href="/api/export/trades.csv">all trades CSV</a> · <a href="/api/export/trades.json">JSON</a> · <a href="/api/export/days.json">daily log</a> · <a href="/api/export/signals.csv">every setup incl. rejected (CSV)</a> · day candles: /api/export/candles.json?day=YYYY-MM-DD</p></section>
     </div>
     <div class="panel" data-panel="strategy">
       <section class="card" id="cRules"><h2>Live strategy</h2><div id="rules" class="rules"></div></section>
@@ -219,6 +219,18 @@ const legHtml=l=>`<div class="leg"><div class="row"><b>${l.side==='long'?'Buy ab
 
 const hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 const BLOCK_TEXT={'weak-volume':'Volume too light','wrong-side-of-vwap':'Wrong side of VWAP','nifty-against':'Nifty against the trade','chasing':'Price ran too far past the trigger','stop-level-hit-before-breakout':'Stop level hit before a breakout (setup died)','target-hit-before-entry':'Target reached without an entry (setup died)'};
+const safeUrl=u=>/^https:\/\//i.test(u||'')?u:null;
+const srcLinks=a=>(a||[]).map(x=>{const u=safeUrl(x.url);const t=esc((x.source?x.source+': ':'')+x.title);return u?'<a href="'+esc(u)+'" target="_blank" rel="noopener noreferrer">'+t+'</a>':t}).join('<br>');
+function newsOkHtml(nw){
+  const auto=nw.source==='gemini';
+  const ids=Object.keys(nw.details||{});
+  const chip=d=>d.block===true?'<span class="badge no">Avoid</span>':d.block===false?'<span class="badge ok">Clear</span>':'<span class="badge no" style="background:var(--warn-bg);color:var(--warn)">Unverified</span>';
+  const rows=ids.map(sym=>{const d=nw.details[sym];return '<div class="ck"><i></i><div><b>'+esc(sym)+'</b> '+chip(d)+(d.risk?' <span class="mut">risk '+esc(d.risk)+'</span>':'')+'<div class="why">'+esc(d.reason||'')+'</div>'+(d.sources&&d.sources.length?'<div class="why">'+srcLinks(d.sources)+'</div>':'')+'</div></div>'}).join('');
+  const mk=nw.market==='unknown'?'<b>not verified</b>'+(nw.marketEffective&&nw.marketEffective!=='normal'?' (treated as '+esc(nw.marketEffective)+')':''):'<b>'+esc(nw.market)+'</b>';
+  return '<div class="newsbox"><b>'+(auto?'Automatic news check applied':'Manual news check applied')+'</b>'+(nw.model?' <span class="mut">('+esc(nw.model)+', last '+esc(nw.windowHours)+' hours of headlines)</span>':'')+'. Market risk: '+mk+'. '+(nw.avoided&&nw.avoided.length?'Not traded: '+nw.avoided.map(esc).join(', ')+'.':'Nothing avoided.')+(nw.unverified&&nw.unverified.length?' <b>Unverified: '+nw.unverified.map(esc).join(', ')+'.</b>':'')+
+    (nw.marketSummary?'<div class="why">'+esc(nw.marketSummary)+'</div>':'')+(nw.marketSources&&nw.marketSources.length?'<div class="why">'+srcLinks(nw.marketSources)+'</div>':'')+
+    (rows?'<details class="dd"><summary>Why each stock was cleared or avoided</summary><div class="chk">'+rows+'</div></details>':'')+'</div>';
+}
 function checksHtml(checks){
   if(!checks||!checks.length)return '<p class="empty">No checklist stored for this one.</p>';
   return '<div class="chk">'+checks.map(c=>`<div class="ck ${c.ok===true?'y':c.ok===false?'n':'na'}"><i>${c.ok===true?'\u2713':c.ok===false?'\u2717':'\u2013'}</i><div><b>${esc(c.label)}</b> <span class="mut">${esc(c.actual)} &middot; needs ${esc(c.required)}</span><div class="why">${esc(c.why)}</div></div></div>`).join('')+'</div>';
@@ -334,7 +346,7 @@ function render(s){
   const nw=s.watch&&s.watch.news;
   if(nw&&nw.status==='manual-pending'){
     if(!$('newsAnswer')){
-      $('newsBox').innerHTML=`<div class="newsbox"><b>Manual news check</b> - copy this prompt into ChatGPT (or any AI), paste its reply below, then Submit.
+      $('newsBox').innerHTML=`<div class="newsbox"><div id="newsAutoErr" class="err" style="margin-bottom:6px"></div><b>Manual news check</b> - copy this prompt into ChatGPT (or any AI), paste its reply below, then Submit.
         <div style="margin-top:6px"><textarea id="newsPrompt" readonly rows="5" style="width:100%;font-family:monospace;font-size:.72rem"></textarea></div>
         <button type="button" id="bCopyNews" style="margin-top:4px">Copy prompt</button>
         <div style="margin-top:8px"><textarea id="newsAnswer" rows="3" placeholder='Paste the reply here, e.g. {"market":"normal","stocks":{"TCS":true,"INFY":false}}' style="width:100%;font-family:monospace;font-size:.72rem"></textarea></div>
@@ -345,10 +357,12 @@ function render(s){
       if($('bSkipNews'))$('bSkipNews').onclick=()=>ctl('skip-news');
     }
     $('newsPrompt').value=nw.prompt;
+    $('newsAutoErr').innerHTML=nw.error?esc(nw.error)+' <button type="button" id="bRetryNews">Retry automatic check</button>':'';
+    if($('bRetryNews'))$('bRetryNews').onclick=()=>ctl('retry-news');
   }else{
     let nb='';
     if(nw){
-      if(nw.status==='ok')nb=`<div class="newsbox"><b>Manual news check applied.</b> Market risk: <b>${esc(nw.market||'not given')}</b>. ${nw.avoided&&nw.avoided.length?`Avoided: ${nw.avoided.map(esc).join(', ')}.`:'Nothing avoided.'}</div>`;
+      if(nw.status==='ok')nb=newsOkHtml(nw);
       else if(nw.status==='skipped')nb='<div class="newsbox">News check skipped for today.</div>';
       else nb='<div class="newsbox">News check is off. Set NEWS_GUARD=1 (on by default in live mode) to turn it on.</div>';
     }

@@ -85,5 +85,10 @@ module.exports = {
   // only by default, because a replay of a past day would be contaminated by news that already
   // knows how that day ended.
   newsGuard: process.env.NEWS_GUARD !== '0' && ((process.env.MODE || 'replay') === 'live' || process.env.NEWS_IN_REPLAY === '1'),
+  // Automatic news check (Gemini classifies headlines we fetch). Needs GEMINI_API_KEY (or LLM_API_KEY_FREE) in the environment.
+  newsAuto: !!(process.env.GEMINI_API_KEY || process.env.LLM_API_KEY_FREE),
+  unverifiedPolicy: 'block',                // a stock the news check could not verify: 'block' (default, never assume safe) or 'allow'
+  newsWindowHours: 36,                      // only headlines newer than this are used
+  geminiModel: 'gemini-3.1-flash-lite',
   newsRequired: process.env.NEWS_REQUIRED === '1'   // 1 = trading waits until the check is pasted in; the "Skip" button is hidden
 };

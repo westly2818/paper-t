@@ -23,6 +23,7 @@ a{color:var(--accent)}
 .inp{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 input[type=number],input[type=text],input[type=time]{width:130px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:var(--ink);font:inherit}
 input[type=checkbox]{width:20px;height:20px}
+select{padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:var(--ink);font:inherit;max-width:100%}
 .unit{color:var(--muted);font-size:.8rem}
 .def{color:var(--muted);font-size:.74rem}
 .def button{all:unset;color:var(--accent);cursor:pointer;text-decoration:underline}
@@ -91,10 +92,11 @@ function rowHtml(f){
   const v=val(f),d=S.defaults[f.key];
   let input;
   if(f.type==='bool')input=`<input type="checkbox" data-k="${f.key}" ${v?'checked':''}>`;
+  else if(f.type==='select')input=`<select data-k="${f.key}">${f.options.map(o=>`<option value="${esc(o.v)}" ${o.v===v?'selected':''}>${esc(o.label)}</option>`).join('')}</select>`;
   else if(f.type==='time')input=`<input type="time" data-k="${f.key}" value="${esc(v)}">`;
   else if(f.type==='text')input=`<input type="text" data-k="${f.key}" value="${esc(v)}" maxlength="${f.max}">`;
   else input=`<input type="number" data-k="${f.key}" value="${esc(v)}" min="${f.min}" max="${f.max}" step="${f.step}">`;
-  const defTxt=f.type==='bool'?(d?'on':'off'):d;
+  const defTxt=f.type==='bool'?(d?'on':'off'):f.type==='select'?((f.options.find(o=>o.v===d)||{}).label||d):d;
   const differs=JSON.stringify(S.values[f.key])!==JSON.stringify(d);
   return `<div class="row ${f.key in edits?'changed':''}"><div class="lab"><b>${esc(f.label)}</b>${f.help?`<span class="help">${esc(f.help)}</span>`:''}</div>
     <div class="inp">${input}${f.unit?`<span class="unit">${esc(f.unit)}</span>`:''}<span class="def">default ${esc(defTxt)}${differs?` · <button type="button" data-reset="${f.key}">reset</button>`:''}</span></div>

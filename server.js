@@ -54,7 +54,7 @@ const server = http.createServer((req, res) => {
           return c ? send(res, 200, 'application/json', JSON.stringify(c)) : send(res, 404, 'application/json', '{"error":"no candles saved for that day"}');
         }
         const [name, ext] = what.split('.');
-        if (!['trades', 'days'].includes(name) || !['json', 'csv'].includes(ext)) return send(res, 404, 'text/plain', 'Not found');
+        if (!['trades', 'days', 'signals'].includes(name) || !['json', 'csv'].includes(ext)) return send(res, 404, 'text/plain', 'Not found');
         const list = await engine.readList(name);
         res.writeHead(200, { 'Content-Type': ext === 'csv' ? 'text/csv' : 'application/json', 'Content-Disposition': `attachment; filename="${name}.${ext}"`, 'Cache-Control': 'no-store' });
         res.end(ext === 'csv' ? recordsToCsv(list) : JSON.stringify(list));
@@ -93,7 +93,8 @@ const server = http.createServer((req, res) => {
           else if (action === 'speed' && [10, 60, 300, 1200].includes(+value)) clock.setSpeed(+value);
           else if (action === 'restart') { starting = null; await ready(); }
         }
-        if (action === 'skip-news') engine.skipNews();
+        if (action === 'retry-news') engine.retryAutoNews();
+        else if (action === 'skip-news') engine.skipNews();
         else if (action === 'skip-replacements') engine.skipReplacementsNews();
         send(res, 200, 'application/json', '{"ok":true}');
       } catch (e) { send(res, 400, 'application/json', JSON.stringify({ error: e.message })); }
