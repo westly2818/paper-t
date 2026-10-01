@@ -13,7 +13,8 @@ const engine = new Engine(cfg, provider, clock);
 
 async function startSession() {
   engine.reset();
-  if (cfg.mode !== 'live') {
+  if (cfg.mode === 'live') await engine.load();
+  else {
     const day = await provider.pickReplayDay();
     cfg.replayDay = cfg.replayDay || day;
     clock.start(atMinute(day, 9 * 60 + 5), atMinute(day, CLOSE + 2));

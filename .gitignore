@@ -1,3 +1,4 @@
 node_modules/
 backtest-journal.csv
 .env
+data/

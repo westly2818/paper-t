@@ -9,6 +9,13 @@ module.exports = {
   replayDay: process.env.DAY || null,      // YYYY-MM-DD, must be within the last ~7 days. Default: latest full session
   speed: num('SPEED', 60),                 // replay speed: 60 = one market minute per real second
   port: num('PORT', 3000),
+  // Live mode saves its state so open trades survive a restart. Preferred: free Upstash Redis
+  // (set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN), works on Render's free plan.
+  // Fallback: a local file (STATE_FILE), which Render's free plan wipes on restart.
+  upstashUrl: (process.env.MODE || 'replay') === 'live' ? process.env.UPSTASH_REDIS_REST_URL || null : null,
+  upstashToken: process.env.UPSTASH_REDIS_REST_TOKEN || null,
+  stateKey: process.env.STATE_KEY || 'paper-trader:state',
+  stateFile: (process.env.MODE || 'replay') === 'live' && !process.env.UPSTASH_REDIS_REST_URL ? (process.env.STATE_FILE || require('path').join(__dirname, 'data', 'state.json')) : null,
 
   capital: num('CAPITAL', 20000),          // starting virtual cash (INR)
   leverage: num('LEVERAGE', 1),            // 1 = no leverage. Indian brokers give ~5x intraday (MIS) on many stocks
