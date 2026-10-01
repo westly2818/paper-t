@@ -8,8 +8,6 @@ services:
     envVars:
       - key: MODE
         value: live
-      - key: GEMINI_API_KEY
-        sync: false
       - key: CAPITAL
         value: 20000
       - key: RISK_PCT

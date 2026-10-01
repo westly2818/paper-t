@@ -67,9 +67,10 @@ module.exports = {
 
   // ---- market context ----
   vixSymbol: '^INDIAVIX', vixElevated: num('VIX_ELEVATED', 18), vixHigh: num('VIX_HIGH', 24), // risk is cut to 75% / 50%
-  // News screen (Gemini + Google Search). Needs GEMINI_API_KEY. Live mode only, because a replay of a past day
-  // would be contaminated by news that already knows how that day ended.
-  newsGuard: !!process.env.GEMINI_API_KEY && process.env.NEWS_GUARD !== '0' && ((process.env.MODE || 'replay') === 'live' || process.env.NEWS_IN_REPLAY === '1'),
-  newsRequired: process.env.NEWS_REQUIRED === '1',   // 1 = do not trade at all if the news check fails
-  newsRetryMs: num('NEWS_RETRY_MS', 30000)
+  // Manual news screen: no API, no key. The dashboard shows a prompt to paste into ChatGPT (or
+  // any AI) each morning; you paste its true/false reply back and the bot applies it. Live mode
+  // only by default, because a replay of a past day would be contaminated by news that already
+  // knows how that day ended.
+  newsGuard: process.env.NEWS_GUARD !== '0' && ((process.env.MODE || 'replay') === 'live' || process.env.NEWS_IN_REPLAY === '1'),
+  newsRequired: process.env.NEWS_REQUIRED === '1'   // 1 = trading waits until the check is pasted in; the "Skip" button is hidden
 };

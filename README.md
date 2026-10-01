@@ -19,17 +19,14 @@ Useful settings (environment variables):
 
 Other settings (watchlist, filters, timings) are in config.js.
 
-## News check with Gemini (optional, live mode)
-Set your key, then run live. On Windows PowerShell:
-
-    $env:GEMINI_API_KEY="your-key"; $env:MODE="live"; npm start
-    (Mac/Linux:  GEMINI_API_KEY=your-key MODE=live npm start)
-
-At 8:30 am IST the bot makes one Gemini call with Google Search: market-wide event risk (RBI, Fed, Budget, expiry) plus news on each shortlisted stock. Gemini can only make the bot more careful: drop a stock ("avoid"), allow only longs or only shorts, or cut position size and trade fewer stocks on risky days. Verdicts and reasons show on the dashboard and go into the trade journal.
-- It is off in replay and demo mode on purpose (today's news would leak the outcome of a past day). NEWS_IN_REPLAY=1 forces it on.
-- If the call fails 3 times, trading continues without it. NEWS_REQUIRED=1 makes the bot not trade at all instead.
-- GEMINI_MODEL=... overrides the model. Search grounding is billed per search on newer models, so check your Google AI pricing page. One call per day is used.
-- The key stays on your machine and is only used by the Node server.
+## Manual news check (on by default in live mode)
+No API, no key. Once the morning plan is ready, the dashboard shows a "Manual news check" box with
+a ready-made prompt covering that day's shortlisted stocks (plus a couple of backups). Copy it into
+ChatGPT (or any chat AI), paste the reply back into the box, and press Submit. Any stock marked
+`false` is dropped from today's shortlist; the bot stays idle ("waiting-news" phase) until you do this.
+- It is off in replay and demo mode on purpose (today's news would leak the outcome of a past day). NEWS_IN_REPLAY=1 forces it on. NEWS_GUARD=0 turns it off everywhere.
+- A "Skip today" button lets you bypass the check entirely. NEWS_REQUIRED=1 hides that button and forces you to paste an answer before trading starts.
+- Nothing leaves your machine except what you paste into ChatGPT yourself.
 
 ## India VIX rule (all modes)
 Previous-day India VIX at 18 or above cuts risk per trade to 75%; 24 or above cuts it to 50%. Change with VIX_ELEVATED and VIX_HIGH.

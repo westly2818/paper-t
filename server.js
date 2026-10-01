@@ -47,6 +47,19 @@ http.createServer((req, res) => {
           else if (action === 'speed' && [10, 60, 300, 1200].includes(+value)) clock.setSpeed(+value);
           else if (action === 'restart') { starting = null; await ready(); }
         }
+        if (action === 'skip-news') engine.skipNews();
+        send(res, 200, 'application/json', '{"ok":true}');
+      } catch (e) { send(res, 400, 'application/json', JSON.stringify({ error: e.message })); }
+    });
+    return;
+  }
+  if (url.pathname === '/api/news' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => (body += d));
+    req.on('end', () => {
+      try {
+        const { text } = JSON.parse(body || '{}');
+        engine.applyManualNews(text);
         send(res, 200, 'application/json', '{"ok":true}');
       } catch (e) { send(res, 400, 'application/json', JSON.stringify({ error: e.message })); }
     });
@@ -56,5 +69,5 @@ http.createServer((req, res) => {
   send(res, 404, 'text/plain', 'Not found');
 }).listen(cfg.port, () => {
   console.log(`Paper Trader (${cfg.mode} mode, capital ${cfg.capital}) running at http://localhost:${cfg.port}`);
-  console.log(cfg.newsGuard ? 'News guard: ON (Gemini + Google Search)' : `News guard: OFF (${process.env.GEMINI_API_KEY ? 'live mode only' : 'set GEMINI_API_KEY to enable'})`);
+  console.log(cfg.newsGuard ? 'News guard: ON (manual, paste from ChatGPT on the dashboard)' : 'News guard: OFF (live mode only by default, set NEWS_GUARD=1 to force it on)');
 });

@@ -142,7 +142,7 @@ const sgn=(n,d=0)=>(n>=0?'+':'\u2212')+money(Math.abs(n),d);
 const cls=n=>n>0.005?'gain':n<-0.005?'loss':'';
 const tm=ms=>new Date(ms).toLocaleTimeString('en-GB',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit'});
 const dt=ms=>new Date(ms).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:false})+' IST';
-const PHASE={starting:['Starting',''],'pre-market':['Before market opens',''],opening:['Market opening',''],'opening-range':['Watching first 15 min','run'],trading:['Auto-trading','run'],'no-new-trades':['Managing exits only','run'],'square-off':['Squaring off',''],closed:['Market closed',''],'waiting-news':['Checking news',''],halted:['Stopped today: loss limit','halt'],weekend:['Weekend',''],'no-data':['No data today (holiday?)','halt']};
+const PHASE={starting:['Starting',''],'pre-market':['Before market opens',''],opening:['Market opening',''],'opening-range':['Watching first 15 min','run'],trading:['Auto-trading','run'],'no-new-trades':['Managing exits only','run'],'square-off':['Squaring off',''],closed:['Market closed',''],'waiting-news':['Paste news check below',''],halted:['Stopped today: loss limit','halt'],weekend:['Weekend',''],'no-data':['No data today (holiday?)','halt']};
 let last=null;
 
 function chart(s){
@@ -193,15 +193,28 @@ function render(s){
   $('idx').textContent=s.index?`Nifty today ${s.index.chg>=0?'+':''}${s.index.chg.toFixed(2)}%, trading ${s.index.state==='up'?'above':'below'} its average price.${s.watch&&s.watch.index?` Daily trend: ${s.watch.index.bias}.`:''}`:(s.watch&&s.watch.index?`Nifty daily trend: ${s.watch.index.bias}.`:'');
   $('risk').textContent=s.risk&&s.risk.notes.length?`Risk today: ${Math.round(s.risk.mult*100)}% of normal, max ${s.risk.maxPositions} positions. ${s.risk.notes.join('. ')}.`:'';
   const nw=s.watch&&s.watch.news;
-  let nb='';
-  if(nw){
-    if(nw.status==='ok')nb=`<div class="newsbox"><b>News check (${esc(nw.model)}):</b> market risk <b>${esc(nw.market.risk)}</b>. ${esc(nw.market.summary||'')}${nw.market.events.length?`<br>Events: ${nw.market.events.map(esc).join(', ')}`:''}${nw.sources.length?`<br>Sources: ${nw.sources.slice(0,4).map(x=>`<a href="${esc(x.uri)}" target="_blank" rel="noopener">${esc(x.title)}</a>`).join(', ')}`:''}</div>`;
-    else if(nw.status==='error')nb=`<div class="err">News check failed (try ${nw.tries} of 3): ${esc(nw.error)}</div>`;
-    else if(nw.status==='waiting')nb=`<div class="newsbox">${esc(nw.note)}</div>`;
-    else if(nw.status==='pending')nb='<div class="newsbox">Checking news...</div>';
-    else nb='<div class="newsbox">News check is off. Set GEMINI_API_KEY and run in live mode to turn it on.</div>';
+  if(nw&&nw.status==='manual-pending'){
+    if(!$('newsAnswer')){
+      $('newsBox').innerHTML=`<div class="newsbox"><b>Manual news check</b> - copy this prompt into ChatGPT (or any AI), paste its reply below, then Submit.
+        <div style="margin-top:6px"><textarea id="newsPrompt" readonly rows="5" style="width:100%;font-family:monospace;font-size:.72rem"></textarea></div>
+        <button type="button" id="bCopyNews" style="margin-top:4px">Copy prompt</button>
+        <div style="margin-top:8px"><textarea id="newsAnswer" rows="3" placeholder='Paste the reply here, e.g. {"TCS":true,"INFY":false}' style="width:100%;font-family:monospace;font-size:.72rem"></textarea></div>
+        <div style="margin-top:4px"><button type="button" id="bSubmitNews">Submit</button>${s.config.newsRequired?'':' <button type="button" id="bSkipNews">Skip today</button>'}</div>
+        <div id="newsErr" class="err" style="margin-top:4px"></div></div>`;
+      $('bCopyNews').onclick=()=>{$('newsPrompt').select();navigator.clipboard&&navigator.clipboard.writeText($('newsPrompt').value).catch(()=>{});};
+      $('bSubmitNews').onclick=submitNews;
+      if($('bSkipNews'))$('bSkipNews').onclick=()=>ctl('skip-news');
+    }
+    $('newsPrompt').value=nw.prompt;
+  }else{
+    let nb='';
+    if(nw){
+      if(nw.status==='ok')nb=`<div class="newsbox"><b>Manual news check applied.</b> ${nw.avoided&&nw.avoided.length?`Avoided: ${nw.avoided.map(esc).join(', ')}.`:'Nothing avoided.'}</div>`;
+      else if(nw.status==='skipped')nb='<div class="newsbox">News check skipped for today.</div>';
+      else nb='<div class="newsbox">News check is off. Set NEWS_GUARD=1 (on by default in live mode) to turn it on.</div>';
+    }
+    $('newsBox').innerHTML=nb;
   }
-  $('newsBox').innerHTML=nb;
   if(s.watch){
     const planBy={};s.plans.forEach(p=>planBy[p.sym]=p);
     $('plans').innerHTML=s.watch.picked.map(i=>{
@@ -225,6 +238,15 @@ function render(s){
 }
 async function tick(){try{const r=await fetch('/api/state',{cache:'no-store'});render(await r.json());}catch(e){$('err').innerHTML='<div class="err">Cannot reach the bot. Is it still running in your terminal?</div>';}}
 const ctl=(action,value)=>fetch('/api/control',{method:'POST',body:JSON.stringify({action,value})}).then(tick);
+async function submitNews(){
+  $('newsErr').textContent='';
+  try{
+    const r=await fetch('/api/news',{method:'POST',body:JSON.stringify({text:$('newsAnswer').value})});
+    const j=await r.json();
+    if(!r.ok)throw new Error(j.error||'Failed');
+    tick();
+  }catch(e){$('newsErr').textContent=e.message;}
+}
 $('bPause').onclick=()=>ctl(last&&last.paused?'resume':'pause');
 $('bRestart').onclick=()=>ctl('restart');
 document.querySelectorAll('[data-sp]').forEach(b=>b.onclick=()=>ctl('speed',+b.dataset.sp));
