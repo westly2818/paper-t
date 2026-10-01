@@ -39,6 +39,7 @@ module.exports = {
   ],
   indexSymbol: '^NSEI',                    // Nifty 50, used as a market filter
   shortlistSize: num('SHORTLIST', 6),
+  backupPoolSize: num('BACKUPS', 15),       // deep bench to replace a stock whose setup dies with no trade
   minAtrPct: 1.0,                          // need enough daily movement to be worth trading
   maxAtrPct: 4.5,
   minTurnover: 3e8,                        // avg daily traded value (INR) for liquidity

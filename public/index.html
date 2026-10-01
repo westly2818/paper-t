@@ -117,6 +117,7 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
       <div id="idx" class="why"></div>
       <div id="risk" class="why"></div>
       <div id="newsBox"></div>
+      <div id="replBox" hidden></div>
       <div id="plans"></div>
       <details id="rej"><summary>Stocks not selected</summary><ul id="rejList"></ul></details>
       <details><summary>How the bot decides</summary>
@@ -205,7 +206,7 @@ function render(s){
       }).join('')||'<p class="empty">No setups currently waiting.</p>';
   }else{$('liveBox').innerHTML='<p class="empty">Appears once the morning plan and opening range are ready.</p>';}
   $('idx').textContent=s.index?`Nifty today ${s.index.chg>=0?'+':''}${s.index.chg.toFixed(2)}%, trading ${s.index.state==='up'?'above':'below'} its average price.${s.watch&&s.watch.index?` Daily trend: ${s.watch.index.bias}.`:''}`:(s.watch&&s.watch.index?`Nifty daily trend: ${s.watch.index.bias}.`:'');
-  $('risk').textContent=s.risk&&s.risk.notes.length?`Risk today: ${Math.round(s.risk.mult*100)}% of normal, max ${s.risk.maxPositions} positions. ${s.risk.notes.join('. ')}.`:'';
+  $('risk').textContent=(s.risk&&s.risk.notes.length?`Risk today: ${Math.round(s.risk.mult*100)}% of normal, max ${s.risk.maxPositions} positions. ${s.risk.notes.join('. ')}.`:'')+(s.watch?` Backups left if a setup dies: ${s.watch.backupsLeft}.`:'');
   const nw=s.watch&&s.watch.news;
   if(nw&&nw.status==='manual-pending'){
     if(!$('newsAnswer')){
@@ -229,6 +230,35 @@ function render(s){
     }
     $('newsBox').innerHTML=nb;
   }
+  const reps=s.pendingReplacements||[];
+  const repIds=reps.map(r=>r.slot);
+  $('replBox').querySelectorAll('[data-slot]').forEach(el=>{if(!repIds.includes(el.dataset.slot))el.remove();});
+  reps.forEach(r=>{
+    if($('replBox').querySelector(`[data-slot="${CSS.escape(r.slot)}"]`))return;
+    const div=document.createElement('div');
+    div.className='newsbox';div.dataset.slot=r.slot;
+    div.innerHTML=`<b>${esc(r.slot)}'s slot died today - try backup ${esc(r.candidate)}?</b> Copy this prompt into ChatGPT, paste its reply, then Submit.
+      <div style="margin-top:6px"><textarea readonly rows="4" style="width:100%;font-family:monospace;font-size:.72rem"></textarea></div>
+      <button type="button" class="bCopy" style="margin-top:4px">Copy prompt</button>
+      <div style="margin-top:8px"><textarea class="ans" rows="2" placeholder="Paste the reply here" style="width:100%;font-family:monospace;font-size:.72rem"></textarea></div>
+      <div style="margin-top:4px"><button type="button" class="bSub">Submit</button>${s.config.newsRequired?'':' <button type="button" class="bSkip">Use it anyway</button>'}</div>
+      <div class="errx err" style="margin-top:4px"></div>`;
+    div.querySelector('textarea[readonly]').value=r.prompt;
+    div.querySelector('.bCopy').onclick=()=>{const ta=div.querySelector('textarea[readonly]');ta.select();navigator.clipboard&&navigator.clipboard.writeText(ta.value).catch(()=>{});};
+    div.querySelector('.bSub').onclick=async()=>{
+      const errEl=div.querySelector('.errx');errEl.textContent='';
+      try{
+        const resp=await fetch('/api/news/replacement',{method:'POST',body:JSON.stringify({slot:r.slot,text:div.querySelector('.ans').value})});
+        const j=await resp.json();
+        if(!resp.ok)throw new Error(j.error||'Failed');
+        tick();
+      }catch(e){errEl.textContent=e.message;}
+    };
+    const skipBtn=div.querySelector('.bSkip');
+    if(skipBtn)skipBtn.onclick=()=>ctl('skip-replacement',r.slot);
+    $('replBox').appendChild(div);
+  });
+  $('replBox').hidden=reps.length===0;
   if(s.watch){
     const planBy={};s.plans.forEach(p=>planBy[p.sym]=p);
     $('plans').innerHTML=s.watch.picked.map(i=>{
