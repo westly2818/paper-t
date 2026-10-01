@@ -62,6 +62,18 @@ canvas{display:block;width:100%;height:180px;margin-top:10px}
 .dg{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px 12px;margin-top:8px;font-size:.78rem}
 .dg span{display:block;color:var(--muted);font-weight:600;font-size:.7rem}
 .dg b{font-size:.84rem}
+.chk{margin-top:6px}
+.ck{display:flex;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:.8rem}
+.ck:first-child{border-top:0}
+.ck i{font-style:normal;font-weight:800;width:18px;flex:none;text-align:center}
+.ck.y i{color:var(--gain)}.ck.n i{color:var(--loss)}.ck.na i{color:var(--muted)}
+.ck .why{color:var(--muted);font-size:.75rem}
+details.dd{margin-top:8px;background:var(--soft);border-radius:8px;padding:6px 10px}
+details.dd summary{cursor:pointer;font-size:.8rem;font-weight:600}
+.badge{display:inline-block;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700}
+.badge.ok{background:var(--gain-bg);color:var(--gain)}.badge.no{background:var(--loss-bg);color:var(--loss)}
+.rules ol{margin:6px 0 0;padding-left:20px;font-size:.84rem}.rules li{margin:5px 0}
+.rules .all{margin:4px 0 0;padding-left:18px}
 .pr1{display:flex;justify-content:space-between;gap:10px}
 .pr1 .r{text-align:right;display:flex;flex-direction:column;line-height:1.2}
 .pr1 small{font-size:.75rem;font-weight:600}
@@ -82,12 +94,21 @@ details{margin-top:10px;font-size:.85rem}
 summary{cursor:pointer;font-weight:700}
 details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
 .note2{margin:14px 2px 0;color:var(--muted);font-size:.78rem}
+.tabs{display:flex;gap:4px;overflow-x:auto;margin:12px 0 0;padding-bottom:2px;border-bottom:1px solid var(--line);-webkit-overflow-scrolling:touch;position:sticky;top:0;background:var(--bg);z-index:5}
+.tabs button,.tabs a{all:unset;cursor:pointer;white-space:nowrap;padding:9px 13px;font-size:.88rem;font-weight:600;color:var(--muted);border-bottom:3px solid transparent}
+.tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+.tabs button:hover,.tabs a:hover{color:var(--ink)}
+.tabs .cnt{display:inline-block;min-width:18px;text-align:center;border-radius:9px;background:var(--soft);color:var(--ink);font-size:.7rem;padding:0 5px;margin-left:3px}
+.tabs .cnt:empty{display:none}
+.panel{display:none;margin-top:12px}
+.panel.on{display:block}
+.panel>.card{margin-top:12px}
+.panel>.card:first-child{margin-top:0}
 @media (min-width:920px){
-  .grid{grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);align-items:start}
-  #cPort{grid-column:1;grid-row:1}#cStats{grid-column:2;grid-row:1}
-  #cPos{grid-column:1;grid-row:2}#cPlan{grid-column:2;grid-row:2/span 4}
-  #cLive{grid-column:1;grid-row:3}
-  #cClosed{grid-column:1;grid-row:4}#cLog{grid-column:1;grid-row:5}
+  .panel.two.on{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:12px;align-items:start}
+  .panel.two>.card{margin-top:0}
+  .panel.two>#cPos{grid-column:1/-1}
+
 }
 </style>
 </head>
@@ -105,22 +126,41 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     <button id="bRestart">Restart day</button>
   </div>
 
-  <main class="grid">
-    <section class="card" id="cPort">
+  <div id="actions">
+    <div id="newsBox"></div>
+    <div id="replBox" hidden></div>
+  </div>
+
+  <nav class="tabs" id="tabs" aria-label="Sections">
+    <button type="button" data-tab="overview" class="on">Overview <span class="cnt" id="tcPos"></span></button>
+    <button type="button" data-tab="watch">Entry watch <span class="cnt" id="tcWatch"></span></button>
+    <button type="button" data-tab="plan">Today's plan</button>
+    <button type="button" data-tab="trades">Trades <span class="cnt" id="tcClosed"></span></button>
+    <button type="button" data-tab="strategy">Strategy</button>
+    <button type="button" data-tab="activity">Activity</button>
+    <a href="/settings">Settings</a>
+  </nav>
+
+  <main>
+    <div class="panel two on" data-panel="overview">
+      <section class="card" id="cPort">
       <h2>Portfolio value</h2>
       <div class="big" id="eq">-</div>
       <div class="pl"><span><small>Total</small><span id="plT">-</span></span><span><small>Today</small><span id="plD">-</span></span><span><small>Trades today</small><span id="nT">0</span></span></div>
       <canvas id="chart" aria-label="Portfolio value over time"></canvas>
     </section>
-    <section class="card" id="cStats"><h2>Performance</h2><div class="stats" id="stats"></div></section>
-    <section class="card" id="cPos"><h2>Open positions</h2><div id="pos"></div></section>
-    <section class="card" id="cLive"><h2>Live entry watch</h2><div id="liveBox"></div></section>
-    <section class="card" id="cPlan">
+      <section class="card" id="cStats"><h2>Performance</h2><div class="stats" id="stats"></div></section>
+      <section class="card" id="cPos"><h2>Open positions</h2><div id="pos"></div></section>
+    </div>
+    <div class="panel" data-panel="watch">
+      <section class="card" id="cLive"><h2>Live entry watch</h2><div id="liveBox"></div></section>
+    </div>
+    <div class="panel" data-panel="plan">
+      <section class="card" id="cPlan">
       <h2>Today's stock plan</h2>
       <div id="idx" class="why"></div>
       <div id="risk" class="why"></div>
-      <div id="newsBox"></div>
-      <div id="replBox" hidden></div>
+      
       <div id="plans"></div>
       <details id="rej"><summary>Stocks not selected</summary><ul id="rejList"></ul></details>
       <details><summary>How the bot decides</summary>
@@ -133,8 +173,16 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
         </ul>
       </details>
     </section>
-    <section class="card" id="cClosed"><h2>Closed trades</h2><div id="closed"></div><p class="why" style="margin-top:10px">Full history for analysis (kept forever): <a href="/api/export/trades.csv">all trades CSV</a> · <a href="/api/export/trades.json">JSON</a> · <a href="/api/export/days.json">daily log</a> · day candles: /api/export/candles.json?day=YYYY-MM-DD</p></section>
-    <section class="card" id="cLog"><h2>Activity</h2><ul class="act" id="log"></ul></section>
+    </div>
+    <div class="panel" data-panel="trades">
+      <section class="card" id="cClosed"><h2>Closed trades</h2><div id="closed"></div><p class="why" style="margin-top:10px">Full history for analysis (kept forever): <a href="/api/export/trades.csv">all trades CSV</a> · <a href="/api/export/trades.json">JSON</a> · <a href="/api/export/days.json">daily log</a> · day candles: /api/export/candles.json?day=YYYY-MM-DD</p></section>
+    </div>
+    <div class="panel" data-panel="strategy">
+      <section class="card" id="cRules"><h2>Live strategy</h2><div id="rules" class="rules"></div></section>
+    </div>
+    <div class="panel" data-panel="activity">
+      <section class="card" id="cLog"><h2>Activity</h2><ul class="act" id="log"></ul></section>
+    </div>
   </main>
   <p class="note2">Paper trading only: no orders are sent to any broker. Charges are approximate. Real fills can be worse than simulated ones.</p>
 </div>
@@ -169,7 +217,68 @@ function chart(s){
 }
 const legHtml=l=>`<div class="leg"><div class="row"><b>${l.side==='long'?'Buy above':'Short below'} ${inr(l.trigger)}</b><span>Stop <b>${inr(l.sl)}</b></span><span>Target <b>${inr(l.tp)}</b></span><span>Qty <b>${l.qty}</b></span><span>Risk <b>${money(l.risk)}</b></span><span class="chip ${l.status}">${l.status}</span></div>${l.note?`<div class="note">${esc(l.note)}</div>`:''}</div>`;
 
+const hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+const BLOCK_TEXT={'weak-volume':'Volume too light','wrong-side-of-vwap':'Wrong side of VWAP','nifty-against':'Nifty against the trade','chasing':'Price ran too far past the trigger','stop-level-hit-before-breakout':'Stop level hit before a breakout (setup died)','target-hit-before-entry':'Target reached without an entry (setup died)'};
+function checksHtml(checks){
+  if(!checks||!checks.length)return '<p class="empty">No checklist stored for this one.</p>';
+  return '<div class="chk">'+checks.map(c=>`<div class="ck ${c.ok===true?'y':c.ok===false?'n':'na'}"><i>${c.ok===true?'\u2713':c.ok===false?'\u2717':'\u2013'}</i><div><b>${esc(c.label)}</b> <span class="mut">${esc(c.actual)} &middot; needs ${esc(c.required)}</span><div class="why">${esc(c.why)}</div></div></div>`).join('')+'</div>';
+}
+function ctxHtml(c){
+  if(!c)return '';
+  const sc=c.setupScore;
+  const rows=[];
+  if(c.or)rows.push(cell('Opening range',inr(c.or.lo)+' to '+inr(c.or.hi)+' ('+Number(c.or.rangePct).toFixed(2)+'%)'));
+  if(c.gapPct!=null)rows.push(cell('Gap at open',(c.gapPct>=0?'+':'')+Number(c.gapPct).toFixed(2)+'%'));
+  if(c.planBias)rows.push(cell('Daily trend',c.planBias==='bull'?'Uptrend':c.planBias==='bear'?'Downtrend':'Neutral'));
+  if(c.shortlistRank)rows.push(cell('Shortlist rank','#'+c.shortlistRank+(c.fromBackup?' (backup pick)':'')));
+  if(c.newsVerdict!=null)rows.push(cell('News check',c.newsVerdict===false?'avoid':'ok'));
+  if(c.vix!=null)rows.push(cell('India VIX',Number(c.vix).toFixed(1)+(c.riskMult&&c.riskMult<1?' (risk cut to '+Math.round(c.riskMult*100)+'%)':'')));
+  if(c.volRatio!=null)rows.push(cell('Volume vs average',Number(c.volRatio).toFixed(2)+'x'));
+  if(c.vwapDistPct!=null)rows.push(cell('Distance from VWAP',Number(c.vwapDistPct).toFixed(2)+'%'));
+  if(c.relStrengthPct!=null)rows.push(cell('Vs Nifty (in trade direction)',(c.relStrengthPct>=0?'+':'')+Number(c.relStrengthPct).toFixed(2)+'%'));
+  if(sc)rows.push(cell('Setup score (study only)',sc.score+'/'+sc.max+' grade '+sc.grade));
+  return '<div class="dg">'+rows.join('')+'</div>'+((c.stockWhy||(c.stock&&c.stock.why))?'<div class="why" style="margin-top:6px">Stock trend: '+esc(c.stockWhy||c.stock.why)+'</div>':'');
+}
+function renderRules(s){
+  const r=s.rules;if(!r){$('rules').innerHTML='';return;}
+  const orEnd=9*60+15+r.orMinutes;
+  $('rules').innerHTML=`<div class="why">Strategy version <b>${esc(r.strategyVersion)}</b> &middot; opening-range breakout (momentum). Change any of these on the <a href="/settings">Settings</a> screen.</div>
+  <ol>
+   <li><b>Morning plan.</b> From the Nifty 200, keep stocks that move ${r.minAtrPct}% to ${r.maxAtrPct}% a day with enough turnover, rank them by daily trend, and watch the top ${r.shortlistSize} (${r.backupPoolSize} backups; a dead slot is replaced until ${hm(r.replaceUntilMin)}). News check: ${r.newsGuard?'manual (ChatGPT paste each morning)':'off'}.</li>
+   <li><b>Opening range 09:15 to ${hm(orEnd)}.</b> Record each stock's high and low. No trading. The range must be ${r.minOrPct}% to ${r.maxOrPct}% wide.</li>
+   <li><b>Entry window ${hm(orEnd)} to ${hm(r.lastEntryMin)}.</b> After each closed 5-minute candle, a trade is taken only if <u>all</u> of these are true:
+     <ul class="all"><li>the candle closes beyond the range (${r.allowShort?'above the high for a long, below the low for a short':'above the high; shorts are off'}), with a ${r.triggerBufferPct}% buffer</li>
+     <li>price is on the right side of VWAP</li>
+     <li>volume is at least ${r.minVolRatio}x the day's average 5-minute volume</li>
+     <li>${r.useIndexFilter?'Nifty agrees (above its VWAP for a long, below for a short)':'Nifty filter is off'}</li>
+     <li>price is no more than ${r.maxChasePct}% past the trigger</li>
+     <li>fewer than ${r.maxPositions} positions are open and fewer than ${r.maxTradesPerDay} trades were taken today</li></ul></li>
+   <li><b>Size.</b> Risk ${r.riskPct}% of equity per trade. At most ${r.maxAllocPct}% of buying power (capital ${money(r.capital)} x ${r.leverage} leverage) in one stock. Stop is ${r.minStopPct}% to ${r.maxStopPct}% away.</li>
+   <li><b>Exit.</b> Target ${r.rr}R. The stop moves to breakeven at +${r.breakevenR}R${r.trailing?', then trails after +1.5R':''}. Everything is closed at ${hm(r.squareOffMin)}.</li>
+   <li><b>Day stop.</b> No more trades after a ${r.dailyLossPct}% loss for the day.</li>
+  </ol>`;
+}
+let lastState=null;
+function showTab(t){
+  if(!document.querySelector('[data-panel="'+t+'"]'))t='overview';
+  document.querySelectorAll('[data-panel]').forEach(p=>p.classList.toggle('on',p.dataset.panel===t));
+  document.querySelectorAll('#tabs [data-tab]').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+  try{localStorage.setItem('pt_tab',t)}catch(e){}
+  try{history.replaceState(null,'','#'+t)}catch(e){}
+  if(lastState)render(lastState);
+}
+function initTabs(){
+  document.querySelectorAll('#tabs [data-tab]').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+  let t=(location.hash||'').replace('#','');
+  if(!t){try{t=localStorage.getItem('pt_tab')||''}catch(e){}}
+  showTab(t||'overview');
+}
 function render(s){
+  lastState=s;
+  $('tcPos').textContent=s.positions.length||'';
+  $('tcClosed').textContent=s.closed.length||'';
+  $('tcWatch').textContent=s.live?s.live.stocks.filter(st=>Object.values(st.legs||{}).some(l=>l.status==='waiting')).length||'':'';
+  renderRules(s);
   last=s;
   const modeTxt=s.mode==='live'?'Live NSE prices':s.mode==='replay'?`Replay of a real trading day (${s.day||'...'})`:'Demo with made-up prices';
   $('modeLine').textContent=`${modeTxt}. Starting capital ${money(s.cap)}${s.config.leverage>1?`, ${s.config.leverage}× leverage`:''}.`;
@@ -198,21 +307,28 @@ function render(s){
     const buy=p.side==='long';
     return `<div class="pos"><div class="pr1"><div><b>${esc(p.sym)}</b> <span class="chip ${buy?'bull':'bear'}">${buy?'BUY (Long)':'SELL (Short)'}</span>${p.trailing?' <span class="chip win">Stop raised</span>':''}</div><div class="r ${cls(p.pnl)}"><b>${sgn(p.pnl,2)}</b><small>${p.pct>=0?'+':''}${p.pct.toFixed(2)}%</small></div></div><div class="rng" style="--e:${e}%;--x:${x}%"><i class="entry"></i><i class="dot ${cls(p.pnl)}"></i></div><div class="rl"><span>Stop ${inr(p.sl)}</span><span>Now ${inr(p.ltp)}</span><span>Target ${inr(p.tp)}</span></div>
       <div class="dg">${cell('Quantity',p.qty+' shares')}${cell(buy?'Buy price':'Sell price',inr(p.entry))}${cell('Amount invested',money(p.qty*p.entry,2))}${cell('Entered at',dt(p.t))}${cell('Current price',inr(p.ltp))}${cell('Current value',money(p.qty*p.ltp,2))}${cell('Charges so far',money(p.fee,2))}${cell('Max loss at stop',money(p.qty*Math.abs(p.entry-p.sl),2))}${cell('Profit at target',money(p.qty*Math.abs(p.tp-p.entry),2))}</div>
-      <div class="why" style="margin-top:6px">Why entered: ${esc(p.reason||'')}</div></div>`;
+      <div class="why" style="margin-top:6px">${p.ctx&&p.ctx.setupScore?`Setup score <b>${p.ctx.setupScore.score}/${p.ctx.setupScore.max}</b> (grade ${p.ctx.setupScore.grade}, for study only). `:''}Why entered: ${esc(p.reason||'')}</div>${p.ctx&&p.ctx.checks?`<details class="dd"><summary>Why this trade triggered: all ${p.ctx.checks.filter(c=>c.ok===true).length} applicable conditions were true</summary>${checksHtml(p.ctx.checks)}${ctxHtml(p.ctx)}</details>`:''}</div>`;
   }).join(''):`<p class="empty">${s.phase==='trading'||s.phase==='opening-range'?'No open trades. Waiting for a valid breakout.':'No open trades.'}</p>`);
 
   const condChip=(label,v)=>`<span class="chip ${v===true?'win':v===false?'loss':''}">${label}${v===null?' n/a':v===true?' ✓':v===false?' ✗':''}</span>`;
   if(s.live&&s.live.stocks.length){
-    $('liveBox').innerHTML=`<div class="why" style="margin-bottom:6px">Nifty right now: <b>${esc(s.live.idxState)}</b>${s.live.idxLtp?` (${inr(s.live.idxLtp)} vs VWAP ${inr(s.live.idxVwap)})`:''}. Checks shown are live price, actual entry only fires on a closed 5-min candle.</div>`+
-      s.live.stocks.map(st=>{
-        const legsHtml=Object.entries(st.legs||{}).filter(([,l])=>l.status==='waiting').map(([side,l])=>
-          `<div class="why" style="margin-top:4px"><b>${side==='long'?'Buy above':'Short below'} ${inr(l.trigger)}</b> (vol ${l.volRatio==null?'-':l.volRatio.toFixed(2)+'x'}, chase ${l.chasePct.toFixed(2)}%)<br>`+
-          condChip('Breakout',l.conditions.breakout)+' '+condChip('VWAP side',l.conditions.vwapSide)+' '+condChip('Volume',l.conditions.volumeOk)+' '+condChip('Nifty agrees',l.conditions.indexAgree)+' '+condChip('Not chasing',l.conditions.notChasing)+'</div>'
-        ).join('');
-        if(!legsHtml)return '';
-        return `<div class="stock"><div class="sh"><b>${esc(st.sym)}</b><span class="chip ${st.status}">${st.status}</span></div><div class="why">LTP <b>${st.ltp?inr(st.ltp):'-'}</b> VWAP <b>${st.vwap?inr(st.vwap):'-'}</b></div>${legsHtml}</div>`;
-      }).join('')||'<p class="empty">No setups currently waiting.</p>';
-  }else{$('liveBox').innerHTML='<p class="empty">Appears once the morning plan and opening range are ready.</p>';}
+    const planBy={};s.plans.forEach(p=>planBy[p.sym]=p);
+    const blocks=p=>(p&&p.blocks||[]).slice(-3).reverse().map(b=>`<div class="why">${tm(b.t)} ${esc(BLOCK_TEXT[b.code]||b.code)}${b.close!=null?' (close '+inr(b.close)+(b.vwap!=null?', VWAP '+inr(b.vwap):'')+(b.volRatio!=null?', volume '+Number(b.volRatio).toFixed(2)+'x':'')+')':''}</div>`).join('');
+    const stocksHtml=s.live.stocks.map(st=>{
+      const plan=planBy[st.sym];
+      const legsHtml=Object.entries(st.legs||{}).filter(([,l])=>l.status==='waiting').map(([side,l])=>{
+        const pl=plan&&plan.legs&&plan.legs[side],ev=pl&&pl.lastEval;
+        const head=`<div class="why" style="margin-top:6px"><b>${side==='long'?'Buy above':'Short below'} ${inr(l.trigger)}</b> &middot; stop ${inr(l.sl)} &middot; target ${inr(l.tp)}${l.qty?' &middot; qty '+l.qty:''}</div>`;
+        const last=ev?`<details class="dd"><summary><span class="badge ${ev.allOk?'ok':'no'}">${ev.allOk?'All conditions met':'Not triggered'}</span> Last closed 5-min candle (${tm(ev.at)}): ${ev.checks.filter(c=>c.ok===true).length} of ${ev.checks.length} true${ev.failed.length?'. Blocked by: '+esc(ev.failed.join(', ')):''}</summary>${checksHtml(ev.checks)}</details>`:'<div class="why">No closed candle checked yet since the range formed.</div>';
+        const now=`<details class="dd"><summary>Right now at the live price: ${l.checks.filter(c=>c.ok===true).length} of ${l.checks.length} true${l.checks.some(c=>c.ok===false)?'. Not met: '+esc(l.checks.filter(c=>c.ok===false).map(c=>c.label).join(', ')):'. All met (the bot still waits for the candle to close)'}</summary>${checksHtml(l.checks)}</details>`;
+        return head+last+now;
+      }).join('');
+      if(!legsHtml)return '';
+      return `<div class="stock"><div class="sh"><b>${esc(st.sym)}</b><span class="chip ${st.status}">${st.status}</span></div><div class="why">LTP <b>${st.ltp?inr(st.ltp):'-'}</b> VWAP <b>${st.vwap?inr(st.vwap):'-'}</b></div>${legsHtml}${blocks(plan)?'<div class="why" style="margin-top:6px"><b>Recent blocks</b></div>'+blocks(plan):''}</div>`;
+    }).join('');
+    $('liveBox').innerHTML=`<div class="why" style="margin-bottom:6px">Nifty right now: <b>${esc(s.live.idxState)}</b>${s.live.idxLtp?` (${inr(s.live.idxLtp)} vs VWAP ${inr(s.live.idxVwap)})`:''}. The bot decides only when a 5-minute candle closes. "Last closed candle" is its real decision; "Right now" is a preview at the live price.</div>`+(stocksHtml||'<p class="empty">No setups currently waiting.</p>');
+  }else{
+    $('liveBox').innerHTML='<p class="empty">Appears once the morning plan and opening range are ready.</p>';}
   $('idx').textContent=s.index?`Nifty today ${s.index.chg>=0?'+':''}${s.index.chg.toFixed(2)}%, trading ${s.index.state==='up'?'above':'below'} its average price.${s.watch&&s.watch.index?` Daily trend: ${s.watch.index.bias}.`:''}`:(s.watch&&s.watch.index?`Nifty daily trend: ${s.watch.index.bias}.`:'');
   $('risk').textContent=(s.risk&&s.risk.notes.length?`Risk today: ${Math.round(s.risk.mult*100)}% of normal, max ${s.risk.maxPositions} positions. ${s.risk.notes.join('. ')}.`:'')+(s.watch?` Backups left if a setup dies: ${s.watch.backupsLeft}.`:'');
   const nw=s.watch&&s.watch.news;
@@ -283,12 +399,13 @@ function render(s){
   $('closed').innerHTML=s.closed.length?s.closed.map(t=>{
     const buy=t.side==='long';
     return `<div class="pos"><div class="pr1"><div><b>${esc(t.sym)}</b> <span class="chip ${buy?'bull':'bear'}">${buy?'BUY then SELL':'SELL then BUY'}</span></div><div class="r ${cls(t.net)}"><b>${sgn(t.net,2)}</b><small>${t.r>=0?'+':''}${t.r.toFixed(2)}R</small></div></div>
-      <div class="dg">${cell('Quantity',t.qty+' shares')}${cell(buy?'Buy price':'Sell price',inr(t.entry))}${cell(buy?'Sell price':'Buy price',inr(t.exit))}${cell(buy?'Buy value':'Sell value',money(t.qty*t.entry,2))}${cell(buy?'Sell value':'Buy value',money(t.qty*t.exit,2))}${cell('Entered at',dt(t.tIn))}${cell('Exited at',dt(t.tOut))}${cell('Gross P&L',sgn(t.gross,2))}${cell('Charges',money(t.fees,2))}${cell('Net P&L',sgn(t.net,2))}${cell('Stop / Target',inr(t.sl0)+' / '+inr(t.tp))}</div>
-      <div class="why" style="margin-top:6px">Exit: ${esc(t.reason)}${t.moved?' (stop was raised)':''}. Why entered: ${esc(t.why||'')}</div></div>`;
+      <div class="dg">${cell('Quantity',t.qty+' shares')}${cell(buy?'Buy price':'Sell price',inr(t.entry))}${cell(buy?'Sell price':'Buy price',inr(t.exit))}${cell(buy?'Buy value':'Sell value',money(t.qty*t.entry,2))}${cell(buy?'Sell value':'Buy value',money(t.qty*t.exit,2))}${cell('Entered at',dt(t.tIn))}${cell('Exited at',dt(t.tOut))}${cell('Gross P&L',sgn(t.gross,2))}${cell('Charges',money(t.fees,2))}${cell('Net P&L',sgn(t.net,2))}${cell('Stop / Target',inr(t.sl0)+' / '+inr(t.tp))}${t.score!=null?cell('Setup score',t.score+' (grade '+t.grade+')'):''}</div>
+      <div class="why" style="margin-top:6px">Exit: ${esc(t.reason)}${t.moved?' (stop was raised)':''}. Why entered: ${esc(t.why||'')}</div>${t.entryChecks?`<details class="dd"><summary>Why this trade triggered (conditions at entry)</summary>${checksHtml(t.entryChecks)}${ctxHtml(t.entryCtx)}</details>`:''}</div>`;
   }).join(''):'<p class="empty">No closed trades yet.</p>';
 
   $('log').innerHTML=s.events.length?s.events.map(e=>`<li class="lg ${e.kind}"><span class="lt">${tm(e.t)}</span><span class="lm">${esc(e.text)}</span></li>`).join(''):'<li class="empty">Waiting for the market plan...</li>';
 }
+initTabs();
 async function tick(){try{const r=await fetch('/api/state',{cache:'no-store'});render(await r.json());}catch(e){$('err').innerHTML='<div class="err">Cannot reach the bot. Is it still running in your terminal?</div>';}}
 const ctl=(action,value)=>fetch('/api/control',{method:'POST',body:JSON.stringify({action,value})}).then(tick);
 async function submitNews(){

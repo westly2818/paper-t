@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper Trader Settings</title>
+<style>
+:root{--bg:#EDF0F5;--surface:#fff;--soft:#F3F5F9;--ink:#141C2B;--muted:#667287;--line:#DCE1EA;--gain:#0B8A5B;--loss:#D0402D;--accent:#2C55E8;--accent-ink:#fff;--warn-bg:#FFF1D6;--warn:#8A5A00;--changed:#E9EEFF}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10151E;--surface:#182030;--soft:#1F2839;--ink:#E8EDF5;--muted:#93A0B5;--line:#2A3448;--gain:#3BC48C;--loss:#F0705E;--accent:#6F8CFF;--accent-ink:#0E1626;--warn-bg:#3A2F14;--warn:#F2C56B;--changed:#222E55}}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;font-size:15px;line-height:1.45}
+.wrap{max-width:860px;margin:0 auto;padding:16px 16px 90px}
+h1{margin:0 0 2px;font-size:1.3rem}
+a{color:var(--accent)}
+.sub{color:var(--muted);margin:0 0 12px;font-size:.85rem}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-top:14px}
+.card h2{margin:0 0 6px;font-size:1rem}
+.row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:6px 14px;padding:10px 0;border-top:1px solid var(--line);align-items:center}
+.row:first-of-type{border-top:0}
+.row.changed{background:var(--changed);margin:0 -10px;padding-left:10px;padding-right:10px;border-radius:8px}
+.lab b{display:block}
+.help{color:var(--muted);font-size:.78rem}
+.inp{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+input[type=number],input[type=text],input[type=time]{width:130px;padding:7px 8px;border:1px solid var(--line);border-radius:8px;background:var(--soft);color:var(--ink);font:inherit}
+input[type=checkbox]{width:20px;height:20px}
+.unit{color:var(--muted);font-size:.8rem}
+.def{color:var(--muted);font-size:.74rem}
+.def button{all:unset;color:var(--accent);cursor:pointer;text-decoration:underline}
+.err{color:var(--loss);font-size:.78rem;grid-column:1/-1}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:10px 16px}
+.bar .in{max-width:860px;margin:0 auto;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+button.p{background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:9px 16px;font:inherit;font-weight:700;cursor:pointer}
+button.p:disabled{opacity:.4;cursor:default}
+.note{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:8px 10px;font-size:.82rem;margin-top:10px}
+.ok{color:var(--gain);font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+td,th{text-align:left;padding:5px 6px;border-top:1px solid var(--line)}
+th{color:var(--muted);font-weight:600}
+@media (max-width:560px){.row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Settings</h1>
+  <p class="sub"><a href="/">Back to the dashboard</a> · Changes apply right away to new decisions. Open trades and plans already built keep their levels. Every change is logged with the time and the old value.</p>
+  <div id="note"></div>
+  <div id="groups"></div>
+  <div class="card"><h2>Change history</h2><div id="log" class="help">Loading...</div></div>
+</div>
+<div class="bar"><div class="in">
+  <button class="p" id="save" disabled>Save changes</button>
+  <button id="reset" type="button">Discard edits</button>
+  <span id="msg" class="help"></span>
+</div></div>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let S=null, edits={};
+
+async function load(){
+  const r=await fetch('/api/settings');S=await r.json();edits={};render();loadLog();
+}
+const val=f=>f.key in edits?edits[f.key]:S.values[f.key];
+const isChanged=f=>JSON.stringify(S.values[f.key])!==JSON.stringify(S.defaults[f.key]);
+
+function render(){
+  const groups={};S.schema.forEach(f=>(groups[f.group]=groups[f.group]||[]).push(f));
+  $('note').innerHTML=(S.persisted?'':'<div class="note">This run does not keep settings between restarts (replay/demo mode, or no storage configured). Changes last until the server restarts.</div>')+
+    (S.openPositions?`<div class="note">${S.openPositions} trade(s) are open. Changes apply to new entries and exits from now on.</div>`:'');
+  $('groups').innerHTML=Object.entries(groups).map(([g,fs])=>`<div class="card"><h2>${esc(g)}</h2>${fs.map(rowHtml).join('')}</div>`).join('');
+  document.querySelectorAll('[data-k]').forEach(el=>{
+    el.addEventListener('input',()=>{
+      const f=S.schema.find(x=>x.key===el.dataset.k);
+      let v=f.type==='bool'?el.checked:el.value;
+      if(f.type==='number'&&v!=='')v=+v;
+      if(JSON.stringify(v)===JSON.stringify(S.values[f.key]))delete edits[f.key];else edits[f.key]=v;
+      el.closest('.row').classList.toggle('changed',f.key in edits);
+      update();
+    });
+  });
+  document.querySelectorAll('[data-reset]').forEach(b=>b.onclick=()=>{
+    const f=S.schema.find(x=>x.key===b.dataset.reset);
+    edits[f.key]=S.defaults[f.key];if(JSON.stringify(edits[f.key])===JSON.stringify(S.values[f.key]))delete edits[f.key];
+    renderKeep();
+  });
+  update();
+}
+function renderKeep(){const e={...edits};render();Object.entries(e).forEach(([k,v])=>{edits[k]=v;const el=document.querySelector(`[data-k="${k}"]`);if(!el)return;if(typeof v==='boolean')el.checked=v;else el.value=v;el.closest('.row').classList.add('changed')});update()}
+
+function rowHtml(f){
+  const v=val(f),d=S.defaults[f.key];
+  let input;
+  if(f.type==='bool')input=`<input type="checkbox" data-k="${f.key}" ${v?'checked':''}>`;
+  else if(f.type==='time')input=`<input type="time" data-k="${f.key}" value="${esc(v)}">`;
+  else if(f.type==='text')input=`<input type="text" data-k="${f.key}" value="${esc(v)}" maxlength="${f.max}">`;
+  else input=`<input type="number" data-k="${f.key}" value="${esc(v)}" min="${f.min}" max="${f.max}" step="${f.step}">`;
+  const defTxt=f.type==='bool'?(d?'on':'off'):d;
+  const differs=JSON.stringify(S.values[f.key])!==JSON.stringify(d);
+  return `<div class="row ${f.key in edits?'changed':''}"><div class="lab"><b>${esc(f.label)}</b>${f.help?`<span class="help">${esc(f.help)}</span>`:''}</div>
+    <div class="inp">${input}${f.unit?`<span class="unit">${esc(f.unit)}</span>`:''}<span class="def">default ${esc(defTxt)}${differs?` · <button type="button" data-reset="${f.key}">reset</button>`:''}</span></div>
+    <div class="err" id="e_${f.key}"></div></div>`;
+}
+function update(){const n=Object.keys(edits).length;$('save').disabled=!n;$('msg').textContent=n?`${n} unsaved change(s)`:''}
+
+$('reset').onclick=()=>{edits={};render()};
+$('save').onclick=async()=>{
+  document.querySelectorAll('.err').forEach(e=>e.textContent='');
+  $('msg').textContent='Saving...';
+  try{
+    const r=await fetch('/api/settings',{method:'POST',body:JSON.stringify({changes:edits})});
+    const j=await r.json();
+    if(!r.ok){
+      if(j.fields)Object.entries(j.fields).forEach(([k,m])=>{const e=$('e_'+k);if(e)e.textContent=m});
+      $('msg').innerHTML='<span style="color:var(--loss)">'+esc(j.error||'Failed')+'</span>';return;
+    }
+    S=j;edits={};render();loadLog();
+    $('msg').innerHTML='<span class="ok">Saved. '+(j.changed.length?j.changed.length+' setting(s) changed.':'Nothing changed.')+'</span>';
+  }catch(e){$('msg').textContent=e.message}
+};
+async function loadLog(){
+  try{
+    const r=await fetch('/api/settings/log');const l=await r.json();
+    $('log').innerHTML=l.length?`<table><tr><th>When (IST)</th><th>Setting</th><th>From</th><th>To</th><th>Version</th></tr>${l.map(x=>`<tr><td>${new Date(x.t).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:false})}</td><td>${esc(x.key)}</td><td>${esc(x.fromText)}</td><td>${esc(x.toText)}</td><td>${esc(x.strategyVersion||'')}</td></tr>`).join('')}</table>`:'No changes yet.';
+  }catch(e){$('log').textContent='History is not available.'}
+}
+load();
+</script>
+</body>
+</html>

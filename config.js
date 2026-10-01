@@ -6,7 +6,7 @@ module.exports = {
   // live   = real prices right now (only trades 9:15-15:30 IST on market days)
   // replay = re-plays a real, recent trading day (works any time, even weekends)
   // demo   = made-up prices, needs no internet (for testing)
-  strategyVersion: process.env.STRATEGY_VERSION || '2', // bump when you change rules, so later analysis can compare versions
+  strategyVersion: process.env.STRATEGY_VERSION || '3', // bump when you change rules, so later analysis can compare versions
   mode: process.env.MODE || 'replay',
   replayDay: process.env.DAY || null,      // YYYY-MM-DD, must be within the last ~7 days. Default: latest full session
   speed: num('SPEED', 60),                 // replay speed: 60 = one market minute per real second
@@ -60,11 +60,11 @@ module.exports = {
   orMinutes: 15,                           // opening range = first 15 minutes
   triggerBufferPct: 0.05,                  // enter a little beyond the range edge
   minOrPct: 0.3, maxOrPct: 2.5,            // skip days where the opening range is too tight or too wide
-  minVolRatio: 0.9,                        // breakout candle volume vs day's average 5-min volume
+  minVolRatio: num('MIN_VOL_RATIO', 0.9),                        // breakout candle volume vs day's average 5-min volume
   maxChasePct: 0.4,                        // do not buy if price already ran this far past the trigger
   useIndexFilter: process.env.INDEX_FILTER !== '0',
-  lastEntryMin: 14 * 60 + 30,              // no new trades after 14:30
-  squareOffMin: 15 * 60 + 15,              // everything closed by 15:15
+  lastEntryMin: hm('LAST_ENTRY', 10 * 60),                    // frozen rule: no new trades after 10:00 (was 14:30; only the 9:30-10:00 window showed a positive edge in the 59-session test)
+  squareOffMin: hm('SQUARE_OFF', 15 * 60 + 15),              // everything closed by 15:15
 
   // ---- risk ----
   riskPct: num('RISK_PCT', 1),             // % of equity risked per trade (distance to stop x quantity)

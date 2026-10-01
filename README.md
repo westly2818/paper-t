@@ -40,7 +40,7 @@ Prints win rate, average win/loss, average R, expectancy, profit factor, longest
 1. Morning plan: reads daily candles for the watchlist, scores trend (20/50-day averages, RSI), daily range and liquidity, and shortlists the best stocks your capital can hold.
 2. First 15 minutes: records the opening range (high and low).
 3. Trade plan: writes exact trigger, stop, target and quantity for each stock.
-4. Entries (until 2:30 pm): needs a 5-minute close beyond the range, correct side of VWAP, non-weak volume, Nifty agreeing, and no chasing.
+4. Entries (9:30 to 10:00 am only, `LAST_ENTRY`; frozen as strategy version 3): needs a 5-minute close beyond the range, correct side of VWAP, non-weak volume, Nifty agreeing, and no chasing.
 5. Exits: stop loss, 2R target, stop to breakeven at +1R then trailing, 3:15 pm square-off, and a 3% daily loss limit.
 
 ## Things to know
@@ -66,3 +66,11 @@ In live mode the full state (open positions with their stops and entry context, 
 
 ## Loss protection
 The stop moves to breakeven once a trade is `BREAKEVEN_R` in profit (default 0.5R, was 1R), then trails at +1.5R. On the 6 recent sessions this turned one full-loss trade (TIINDIA, reached +0.6R then stopped at -1.1R) into a small loss and hurt no winner, but that is a very small sample. Set `BREAKEVEN_R=1` to go back. `STRATEGY_VERSION` is `2` from this change, so the analysis log can separate the two rule sets.
+
+## Frozen strategy and evaluation
+Strategy version 3 changes one thing from version 2: new entries stop at 10:00 (`LAST_ENTRY`, was 14:30). Everything else is unchanged (volume 0.9x, Nifty filter, 0.4% chase limit, 2R target, breakeven at +0.5R, trailing at +1.5R, 15:15 exit, 3 positions, 6 trades, 3% daily stop). Do not change rules on the strength of the first 30 live sessions.
+`node --env-file=.env report.js` prints trades, win %, average R, total R, profit factor, max drawdown, long vs short, hold time, 2R hit rate, 15:15 exits and loss streak per strategy version, with a note on how much evidence the session count gives (30 preliminary, 50 meaningful, 100+ strong).
+
+## Settings screen
+Open `/settings` in the app to change risk, entry, exit, stock-selection and news settings. Values are saved in Redis (or `data/settings.json` locally) as overrides of the defaults in `config.js`, are loaded before the server accepts requests, and apply immediately to new decisions (open trades and plans already built keep their levels). Every change is logged with time, old value and new value (`/api/settings/log`), and every trade stores the full rule set it ran under. Only `MODE` and the two Upstash connection values stay in the environment.
+The screen has no password, like the rest of the dashboard: anyone with the URL can change settings.

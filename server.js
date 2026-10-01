@@ -13,6 +13,7 @@ const engine = new Engine(cfg, provider, clock);
 
 async function startSession() {
   engine.reset();
+  await engine.loadSettings();
   if (cfg.mode === 'live') await engine.load();
   else {
     const day = await provider.pickReplayDay();
@@ -40,7 +41,7 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
 
 const send = (res, code, type, body) => { res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store' }); res.end(body); };
 
-http.createServer((req, res) => {
+const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/api/state') return send(res, 200, 'application/json', JSON.stringify(engine.snapshot()));
   if (url.pathname === '/api/journal.csv') { res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="journal.csv"' }); return res.end(toCsv(engine.S.closed)); }
@@ -61,6 +62,25 @@ http.createServer((req, res) => {
     })();
     return;
   }
+  if (url.pathname === '/api/settings' && req.method === 'GET') return send(res, 200, 'application/json', JSON.stringify(engine.settingsView()));
+  if (url.pathname === '/api/settings/log') {
+    engine.readList('settings-log').then(list => send(res, 200, 'application/json', JSON.stringify(list.slice(-100).reverse())))
+      .catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message })));
+    return;
+  }
+  if (url.pathname === '/api/settings' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => (body += d));
+    req.on('end', async () => {
+      try {
+        const { changes } = JSON.parse(body || '{}');
+        const r = await engine.saveSettings(changes);
+        send(res, 200, 'application/json', JSON.stringify({ ok: true, ...r, ...engine.settingsView() }));
+      } catch (e) { send(res, 400, 'application/json', JSON.stringify({ error: e.message, fields: e.fields || null })); }
+    });
+    return;
+  }
+  if (url.pathname === '/settings') return send(res, 200, 'text/html; charset=utf-8', fs.readFileSync(path.join(__dirname, 'public', 'settings.html')));
   if (url.pathname === '/api/control' && req.method === 'POST') {
     let body = '';
     req.on('data', d => (body += d));
@@ -106,7 +126,10 @@ http.createServer((req, res) => {
   }
   if (url.pathname === '/' || url.pathname === '/index.html') return send(res, 200, 'text/html; charset=utf-8', fs.readFileSync(path.join(__dirname, 'public', 'index.html')));
   send(res, 404, 'text/plain', 'Not found');
-}).listen(cfg.port, () => {
+});
+
+// Saved settings are loaded before the first request is served, so a restart never runs on defaults.
+engine.loadSettings().finally(() => server.listen(cfg.port, () => {
   console.log(`Paper Trader (${cfg.mode} mode, capital ${cfg.capital}) running at http://localhost:${cfg.port}`);
   console.log(cfg.newsGuard ? 'News guard: ON (manual, paste from ChatGPT on the dashboard)' : 'News guard: OFF (live mode only by default, set NEWS_GUARD=1 to force it on)');
-});
+}));
