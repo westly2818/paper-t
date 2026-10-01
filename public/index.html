@@ -221,7 +221,7 @@ function render(s){
       $('newsBox').innerHTML=`<div class="newsbox"><b>Manual news check</b> - copy this prompt into ChatGPT (or any AI), paste its reply below, then Submit.
         <div style="margin-top:6px"><textarea id="newsPrompt" readonly rows="5" style="width:100%;font-family:monospace;font-size:.72rem"></textarea></div>
         <button type="button" id="bCopyNews" style="margin-top:4px">Copy prompt</button>
-        <div style="margin-top:8px"><textarea id="newsAnswer" rows="3" placeholder='Paste the reply here, e.g. {"TCS":true,"INFY":false}' style="width:100%;font-family:monospace;font-size:.72rem"></textarea></div>
+        <div style="margin-top:8px"><textarea id="newsAnswer" rows="3" placeholder='Paste the reply here, e.g. {"market":"normal","stocks":{"TCS":true,"INFY":false}}' style="width:100%;font-family:monospace;font-size:.72rem"></textarea></div>
         <div style="margin-top:4px"><button type="button" id="bSubmitNews">Submit</button>${s.config.newsRequired?'':' <button type="button" id="bSkipNews">Skip today</button>'}</div>
         <div id="newsErr" class="err" style="margin-top:4px"></div></div>`;
       $('bCopyNews').onclick=()=>{$('newsPrompt').select();navigator.clipboard&&navigator.clipboard.writeText($('newsPrompt').value).catch(()=>{});};
@@ -232,7 +232,7 @@ function render(s){
   }else{
     let nb='';
     if(nw){
-      if(nw.status==='ok')nb=`<div class="newsbox"><b>Manual news check applied.</b> ${nw.avoided&&nw.avoided.length?`Avoided: ${nw.avoided.map(esc).join(', ')}.`:'Nothing avoided.'}</div>`;
+      if(nw.status==='ok')nb=`<div class="newsbox"><b>Manual news check applied.</b> Market risk: <b>${esc(nw.market||'not given')}</b>. ${nw.avoided&&nw.avoided.length?`Avoided: ${nw.avoided.map(esc).join(', ')}.`:'Nothing avoided.'}</div>`;
       else if(nw.status==='skipped')nb='<div class="newsbox">News check skipped for today.</div>';
       else nb='<div class="newsbox">News check is off. Set NEWS_GUARD=1 (on by default in live mode) to turn it on.</div>';
     }
