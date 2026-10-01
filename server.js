@@ -49,7 +49,7 @@ http.createServer((req, res) => {
           else if (action === 'restart') { starting = null; await ready(); }
         }
         if (action === 'skip-news') engine.skipNews();
-        else if (action === 'skip-replacement') engine.skipReplacementNews(value);
+        else if (action === 'skip-replacements') engine.skipReplacementsNews();
         send(res, 200, 'application/json', '{"ok":true}');
       } catch (e) { send(res, 400, 'application/json', JSON.stringify({ error: e.message })); }
     });
@@ -72,8 +72,8 @@ http.createServer((req, res) => {
     req.on('data', d => (body += d));
     req.on('end', () => {
       try {
-        const { slot, text } = JSON.parse(body || '{}');
-        engine.applyReplacementNews(slot, text);
+        const { text } = JSON.parse(body || '{}');
+        engine.applyReplacementsNews(text);
         send(res, 200, 'application/json', '{"ok":true}');
       } catch (e) { send(res, 400, 'application/json', JSON.stringify({ error: e.message })); }
     });
