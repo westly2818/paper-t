@@ -110,6 +110,7 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     </section>
     <section class="card" id="cStats"><h2>Performance</h2><div class="stats" id="stats"></div></section>
     <section class="card" id="cPos"><h2>Open positions</h2><div id="pos"></div></section>
+    <section class="card" id="cLive"><h2>Live entry watch</h2><div id="liveBox"></div></section>
     <section class="card" id="cPlan">
       <h2>Today's stock plan</h2>
       <div id="idx" class="why"></div>
@@ -190,6 +191,18 @@ function render(s){
     return `<div class="pos"><div class="pr1"><div><b>${esc(p.sym)}</b> <span class="chip ${p.side==='long'?'bull':'bear'}">${p.side==='long'?'Long':'Short'}</span> <span class="mut">${p.qty} sh at ${inr(p.entry)}</span>${p.trailing?' <span class="chip win">Stop raised</span>':''}</div><div class="r ${cls(p.pnl)}"><b>${sgn(p.pnl,2)}</b><small>${p.pct>=0?'+':''}${p.pct.toFixed(2)}%</small></div></div><div class="rng" style="--e:${e}%;--x:${x}%"><i class="entry"></i><i class="dot ${cls(p.pnl)}"></i></div><div class="rl"><span>Stop ${inr(p.sl)}</span><span>Now ${inr(p.ltp)}</span><span>Target ${inr(p.tp)}</span></div></div>`;
   }).join(''):`<p class="empty">${s.phase==='trading'||s.phase==='opening-range'?'No open trades. Waiting for a valid breakout.':'No open trades.'}</p>`;
 
+  const condChip=(label,v)=>`<span class="chip ${v===true?'win':v===false?'loss':''}">${label}${v===null?' n/a':v===true?' ✓':v===false?' ✗':''}</span>`;
+  if(s.live&&s.live.stocks.length){
+    $('liveBox').innerHTML=`<div class="why" style="margin-bottom:6px">Nifty right now: <b>${esc(s.live.idxState)}</b>${s.live.idxLtp?` (${inr(s.live.idxLtp)} vs VWAP ${inr(s.live.idxVwap)})`:''}. Checks shown are live price, actual entry only fires on a closed 5-min candle.</div>`+
+      s.live.stocks.map(st=>{
+        const legsHtml=Object.entries(st.legs||{}).filter(([,l])=>l.status==='waiting').map(([side,l])=>
+          `<div class="why" style="margin-top:4px"><b>${side==='long'?'Buy above':'Short below'} ${inr(l.trigger)}</b> (vol ${l.volRatio==null?'-':l.volRatio.toFixed(2)+'x'}, chase ${l.chasePct.toFixed(2)}%)<br>`+
+          condChip('Breakout',l.conditions.breakout)+' '+condChip('VWAP side',l.conditions.vwapSide)+' '+condChip('Volume',l.conditions.volumeOk)+' '+condChip('Nifty agrees',l.conditions.indexAgree)+' '+condChip('Not chasing',l.conditions.notChasing)+'</div>'
+        ).join('');
+        if(!legsHtml)return '';
+        return `<div class="stock"><div class="sh"><b>${esc(st.sym)}</b><span class="chip ${st.status}">${st.status}</span></div><div class="why">LTP <b>${st.ltp?inr(st.ltp):'-'}</b> VWAP <b>${st.vwap?inr(st.vwap):'-'}</b></div>${legsHtml}</div>`;
+      }).join('')||'<p class="empty">No setups currently waiting.</p>';
+  }else{$('liveBox').innerHTML='<p class="empty">Appears once the morning plan and opening range are ready.</p>';}
   $('idx').textContent=s.index?`Nifty today ${s.index.chg>=0?'+':''}${s.index.chg.toFixed(2)}%, trading ${s.index.state==='up'?'above':'below'} its average price.${s.watch&&s.watch.index?` Daily trend: ${s.watch.index.bias}.`:''}`:(s.watch&&s.watch.index?`Nifty daily trend: ${s.watch.index.bias}.`:'');
   $('risk').textContent=s.risk&&s.risk.notes.length?`Risk today: ${Math.round(s.risk.mult*100)}% of normal, max ${s.risk.maxPositions} positions. ${s.risk.notes.join('. ')}.`:'';
   const nw=s.watch&&s.watch.news;
