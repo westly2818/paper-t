@@ -49,3 +49,11 @@ Prints win rate, average win/loss, average R, expectancy, profit factor, longest
 - Charges are approximate (brokerage, STT, exchange fees, GST, stamp duty). Slippage is 0.02% on market-type fills.
 - With small capital and no leverage, charges take a large share of each trade's profit. Try LEVERAGE=5 to see how much that changes results.
 - A paper profit does not guarantee real profit. Run replay on many different days and live paper trading for a few weeks before judging the strategy.
+
+## Analysis history (kept forever)
+In live mode with Upstash Redis (or a local `data/` folder) the bot keeps, separate from the restart state:
+- `trades`: one record per closed trade, with entry context (VWAP distance, volume ratio, Nifty state, opening range, gap, stock trend and score, VIX, news verdict), how far it went for and against you (`mfeR`, `maeR`), exit reason, charges and the strategy version.
+- `days`: one record per day with the shortlist, rejected stocks and why, every plan's final status and notes, the day's event log and the settings used.
+- `candles:YYYY-MM-DD`: the day's 1-minute candles for every stock watched, so changed rules can be re-tested on the same prices later.
+
+Download: `/api/export/trades.csv`, `/api/export/trades.json`, `/api/export/days.json`, `/api/export/candles.json?day=YYYY-MM-DD`. Set `STRATEGY_VERSION` when you change rules, so results can be compared per version. If the server crashes at the wrong moment a trade can be logged twice; dedupe on `day` + `id`.

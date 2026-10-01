@@ -4,7 +4,7 @@ const path = require('path');
 const cfg = require('./config');
 const { YahooProvider, DemoProvider, Clock } = require('./lib/data');
 const { Engine } = require('./lib/engine');
-const { toCsv } = require('./lib/stats');
+const { toCsv, recordsToCsv } = require('./lib/stats');
 const { atMinute, dayKey, OPEN, CLOSE } = require('./lib/time');
 
 const clock = new Clock(cfg.mode, cfg.speed);
@@ -36,6 +36,23 @@ http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/api/state') return send(res, 200, 'application/json', JSON.stringify(engine.snapshot()));
   if (url.pathname === '/api/journal.csv') { res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="journal.csv"' }); return res.end(toCsv(engine.S.closed)); }
+  if (url.pathname.startsWith('/api/export/')) {
+    const what = url.pathname.slice(12);
+    (async () => {
+      try {
+        if (what === 'candles.json') {
+          const c = await engine.readCandles(url.searchParams.get('day') || '');
+          return c ? send(res, 200, 'application/json', JSON.stringify(c)) : send(res, 404, 'application/json', '{"error":"no candles saved for that day"}');
+        }
+        const [name, ext] = what.split('.');
+        if (!['trades', 'days'].includes(name) || !['json', 'csv'].includes(ext)) return send(res, 404, 'text/plain', 'Not found');
+        const list = await engine.readList(name);
+        res.writeHead(200, { 'Content-Type': ext === 'csv' ? 'text/csv' : 'application/json', 'Content-Disposition': `attachment; filename="${name}.${ext}"`, 'Cache-Control': 'no-store' });
+        res.end(ext === 'csv' ? recordsToCsv(list) : JSON.stringify(list));
+      } catch (e) { send(res, 500, 'application/json', JSON.stringify({ error: e.message })); }
+    })();
+    return;
+  }
   if (url.pathname === '/api/control' && req.method === 'POST') {
     let body = '';
     req.on('data', d => (body += d));
