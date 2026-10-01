@@ -63,3 +63,6 @@ When a picked stock's setup dies with no trade, the bot tries backups. Each back
 
 ## Restarts
 In live mode the full state (open positions with their stops and entry context, plans, news verdicts, pending backups, journal) is saved after every poll and on shutdown (SIGTERM). After a restart the bot reloads it, re-fetches today's candles and catches up on any stop or target hit while it was down.
+
+## Loss protection
+The stop moves to breakeven once a trade is `BREAKEVEN_R` in profit (default 0.5R, was 1R), then trails at +1.5R. On the 6 recent sessions this turned one full-loss trade (TIINDIA, reached +0.6R then stopped at -1.1R) into a small loss and hurt no winner, but that is a very small sample. Set `BREAKEVEN_R=1` to go back. `STRATEGY_VERSION` is `2` from this change, so the analysis log can separate the two rule sets.

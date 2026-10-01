@@ -6,7 +6,7 @@ module.exports = {
   // live   = real prices right now (only trades 9:15-15:30 IST on market days)
   // replay = re-plays a real, recent trading day (works any time, even weekends)
   // demo   = made-up prices, needs no internet (for testing)
-  strategyVersion: process.env.STRATEGY_VERSION || '1', // bump when you change rules, so later analysis can compare versions
+  strategyVersion: process.env.STRATEGY_VERSION || '2', // bump when you change rules, so later analysis can compare versions
   mode: process.env.MODE || 'replay',
   replayDay: process.env.DAY || null,      // YYYY-MM-DD, must be within the last ~7 days. Default: latest full session
   speed: num('SPEED', 60),                 // replay speed: 60 = one market minute per real second
@@ -74,6 +74,7 @@ module.exports = {
   dailyLossPct: num('DAILY_LOSS', 3),      // stop trading for the day at this loss
   rr: num('RR', 2),                        // target = rr x risk
   minStopPct: 0.4, maxStopPct: 1.2,        // stop distance limits as % of price
+  breakevenR: num('BREAKEVEN_R', 0.5),         // move the stop to breakeven once the trade is this many R in profit
   trailing: process.env.TRAILING !== '0',  // move stop to breakeven at +1R, then trail at +1.5R
   slippagePct: 0.02,                       // assumed slippage on market-type fills
 
