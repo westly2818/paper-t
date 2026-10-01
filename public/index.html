@@ -59,6 +59,9 @@ canvas{display:block;width:100%;height:180px;margin-top:10px}
 .leg .note{margin-top:4px;color:var(--muted);font-size:.78rem}
 .pos{padding:12px 0;border-top:1px solid var(--line)}
 .pos:first-of-type{border-top:0;padding-top:2px}
+.dg{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px 12px;margin-top:8px;font-size:.78rem}
+.dg span{display:block;color:var(--muted);font-weight:600;font-size:.7rem}
+.dg b{font-size:.84rem}
 .pr1{display:flex;justify-content:space-between;gap:10px}
 .pr1 .r{text-align:right;display:flex;flex-direction:column;line-height:1.2}
 .pr1 small{font-size:.75rem;font-weight:600}
@@ -143,6 +146,7 @@ const inr=(n,d=2)=>Number(n).toLocaleString('en-IN',{minimumFractionDigits:d,max
 const money=(n,d=0)=>'\u20B9'+inr(n,d);
 const sgn=(n,d=0)=>(n>=0?'+':'\u2212')+money(Math.abs(n),d);
 const cls=n=>n>0.005?'gain':n<-0.005?'loss':'';
+const cell=(k,v)=>`<div><span>${k}</span><b>${v}</b></div>`;
 const tm=ms=>new Date(ms).toLocaleTimeString('en-GB',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit'});
 const dt=ms=>new Date(ms).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:false})+' IST';
 const PHASE={starting:['Starting',''],'pre-market':['Before market opens',''],opening:['Market opening',''],'opening-range':['Watching first 15 min','run'],trading:['Auto-trading','run'],'no-new-trades':['Managing exits only','run'],'square-off':['Squaring off',''],closed:['Market closed',''],'waiting-news':['Paste news check below',''],halted:['Stopped today: loss limit','halt'],weekend:['Weekend',''],'no-data':['No data today (holiday?)','halt']};
@@ -188,10 +192,14 @@ function render(s){
   const f=(v,fn)=>v==null?'-':fn(v);
   $('stats').innerHTML=[['Net P&L after charges',`<b class="${cls(st.net)}">${sgn(st.net,2)}</b>`],['Win rate',`<b>${f(st.winRate,v=>Math.round(v)+'%')}</b> <span style="display:inline">${st.wins}W / ${st.losses}L</span>`],['Average win',`<b class="gain">${f(st.avgWin,v=>money(v,2))}</b>`],['Average loss',`<b class="loss">${f(st.avgLoss,v=>money(Math.abs(v),2))}</b>`],['Expectancy per trade',`<b class="${cls(st.expectancy||0)}">${f(st.expectancy,v=>sgn(v,2))}</b>`],['Average R',`<b>${f(st.avgR,v=>(v>=0?'+':'')+v.toFixed(2)+'R')}</b>`],['Profit factor',`<b>${pf}</b>`],['Longest losing streak',`<b>${st.maxLossStreak}</b>`],['Charges paid',`<b>${money(st.fees,2)}</b>`]].map(([k,v])=>`<div class="tile"><span>${k}</span>${v}</div>`).join('')+`<a class="tile" style="text-decoration:none;color:var(--accent);grid-column:1/-1;font-weight:700" href="/api/journal.csv">Download trade journal (CSV)</a>`;
 
-  $('pos').innerHTML=s.positions.length?s.positions.map(p=>{
+  const used=s.positions.reduce((a,p)=>a+p.qty*p.entry,0),bp=s.equity*s.config.leverage;
+  $('pos').innerHTML=(s.positions.length?`<div class="why" style="margin-bottom:6px">Margin used <b>${money(used,2)}</b> of buying power <b>${money(bp,2)}</b> (capital ${money(s.cap)} x ${s.config.leverage} leverage). Available <b>${money(Math.max(0,bp-used),2)}</b>.</div>`:'')+(s.positions.length?s.positions.map(p=>{
     const span=p.tp-p.sl,x=Math.max(0,Math.min(100,(p.ltp-p.sl)/span*100)),e=Math.max(0,Math.min(100,(p.entry-p.sl)/span*100));
-    return `<div class="pos"><div class="pr1"><div><b>${esc(p.sym)}</b> <span class="chip ${p.side==='long'?'bull':'bear'}">${p.side==='long'?'Long':'Short'}</span> <span class="mut">${p.qty} sh at ${inr(p.entry)}</span>${p.trailing?' <span class="chip win">Stop raised</span>':''}</div><div class="r ${cls(p.pnl)}"><b>${sgn(p.pnl,2)}</b><small>${p.pct>=0?'+':''}${p.pct.toFixed(2)}%</small></div></div><div class="rng" style="--e:${e}%;--x:${x}%"><i class="entry"></i><i class="dot ${cls(p.pnl)}"></i></div><div class="rl"><span>Stop ${inr(p.sl)}</span><span>Now ${inr(p.ltp)}</span><span>Target ${inr(p.tp)}</span></div></div>`;
-  }).join(''):`<p class="empty">${s.phase==='trading'||s.phase==='opening-range'?'No open trades. Waiting for a valid breakout.':'No open trades.'}</p>`;
+    const buy=p.side==='long';
+    return `<div class="pos"><div class="pr1"><div><b>${esc(p.sym)}</b> <span class="chip ${buy?'bull':'bear'}">${buy?'BUY (Long)':'SELL (Short)'}</span>${p.trailing?' <span class="chip win">Stop raised</span>':''}</div><div class="r ${cls(p.pnl)}"><b>${sgn(p.pnl,2)}</b><small>${p.pct>=0?'+':''}${p.pct.toFixed(2)}%</small></div></div><div class="rng" style="--e:${e}%;--x:${x}%"><i class="entry"></i><i class="dot ${cls(p.pnl)}"></i></div><div class="rl"><span>Stop ${inr(p.sl)}</span><span>Now ${inr(p.ltp)}</span><span>Target ${inr(p.tp)}</span></div>
+      <div class="dg">${cell('Quantity',p.qty+' shares')}${cell(buy?'Buy price':'Sell price',inr(p.entry))}${cell('Amount invested',money(p.qty*p.entry,2))}${cell('Entered at',dt(p.t))}${cell('Current price',inr(p.ltp))}${cell('Current value',money(p.qty*p.ltp,2))}${cell('Charges so far',money(p.fee,2))}${cell('Max loss at stop',money(p.qty*Math.abs(p.entry-p.sl),2))}${cell('Profit at target',money(p.qty*Math.abs(p.tp-p.entry),2))}</div>
+      <div class="why" style="margin-top:6px">Why entered: ${esc(p.reason||'')}</div></div>`;
+  }).join(''):`<p class="empty">${s.phase==='trading'||s.phase==='opening-range'?'No open trades. Waiting for a valid breakout.':'No open trades.'}</p>`);
 
   const condChip=(label,v)=>`<span class="chip ${v===true?'win':v===false?'loss':''}">${label}${v===null?' n/a':v===true?' ✓':v===false?' ✗':''}</span>`;
   if(s.live&&s.live.stocks.length){
@@ -272,7 +280,12 @@ function render(s){
     $('rej').hidden=!s.watch.rejected.length;
   }else{$('plans').innerHTML='<p class="empty">Analysing daily charts...</p>';$('rej').hidden=true;}
 
-  $('closed').innerHTML=s.closed.length?s.closed.map(t=>`<div class="tr"><div><b>${esc(t.sym)}</b> <span class="chip ${t.side==='long'?'bull':'bear'}">${t.side==='long'?'Long':'Short'}</span> <span class="mut">${t.qty} sh, ${inr(t.entry)} to ${inr(t.exit)}</span></div><div class="${cls(t.net)}"><b>${sgn(t.net,2)}</b></div><div class="d">${tm(t.tIn)} to ${tm(t.tOut)}. ${esc(t.reason)}</div><div class="d" style="text-align:right">${t.r>=0?'+':''}${t.r.toFixed(2)}R</div></div>`).join(''):'<p class="empty">No closed trades yet.</p>';
+  $('closed').innerHTML=s.closed.length?s.closed.map(t=>{
+    const buy=t.side==='long';
+    return `<div class="pos"><div class="pr1"><div><b>${esc(t.sym)}</b> <span class="chip ${buy?'bull':'bear'}">${buy?'BUY then SELL':'SELL then BUY'}</span></div><div class="r ${cls(t.net)}"><b>${sgn(t.net,2)}</b><small>${t.r>=0?'+':''}${t.r.toFixed(2)}R</small></div></div>
+      <div class="dg">${cell('Quantity',t.qty+' shares')}${cell(buy?'Buy price':'Sell price',inr(t.entry))}${cell(buy?'Sell price':'Buy price',inr(t.exit))}${cell(buy?'Buy value':'Sell value',money(t.qty*t.entry,2))}${cell(buy?'Sell value':'Buy value',money(t.qty*t.exit,2))}${cell('Entered at',dt(t.tIn))}${cell('Exited at',dt(t.tOut))}${cell('Gross P&L',sgn(t.gross,2))}${cell('Charges',money(t.fees,2))}${cell('Net P&L',sgn(t.net,2))}${cell('Stop / Target',inr(t.sl0)+' / '+inr(t.tp))}</div>
+      <div class="why" style="margin-top:6px">Exit: ${esc(t.reason)}${t.moved?' (stop was raised)':''}. Why entered: ${esc(t.why||'')}</div></div>`;
+  }).join(''):'<p class="empty">No closed trades yet.</p>';
 
   $('log').innerHTML=s.events.length?s.events.map(e=>`<li class="lg ${e.kind}"><span class="lt">${tm(e.t)}</span><span class="lm">${esc(e.text)}</span></li>`).join(''):'<li class="empty">Waiting for the market plan...</li>';
 }

@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "live": "MODE=live node server.js",
+    "live": "MODE=live node --env-file=.env server.js",
     "replay": "MODE=replay node server.js",
     "demo": "MODE=demo node server.js",
     "backtest": "node backtest.js"
