@@ -41,7 +41,7 @@ Prints win rate, average win/loss, average R, expectancy, profit factor, longest
 2. First 15 minutes: records the opening range (high and low).
 3. Trade plan: writes exact trigger, stop, target and quantity for each stock.
 4. Entries (9:30 to 10:00 am only, `LAST_ENTRY`; frozen as strategy version 3): needs a 5-minute close beyond the range, correct side of VWAP, non-weak volume, Nifty agreeing, and no chasing.
-5. Exits: stop loss, 2R target, stop to breakeven at +1R then trailing, 3:15 pm square-off, and a 3% daily loss limit.
+5. Exits: stop loss, 2R target, stop to breakeven at +0.5R, then at +1.5R the stop trails 1R behind the best price, 3:15 pm square-off, and a 3% daily loss limit.
 
 ## Things to know
 - Data comes from Yahoo Finance's unofficial endpoint. It can be delayed, rate-limited or change without notice. Replay mode only has about 7 days of 1-minute history.
@@ -59,7 +59,7 @@ In live mode with Upstash Redis (or a local `data/` folder) the bot keeps, separ
 Download: `/api/export/trades.csv`, `/api/export/trades.json`, `/api/export/days.json`, `/api/export/candles.json?day=YYYY-MM-DD`. Set `STRATEGY_VERSION` when you change rules, so results can be compared per version. If the server crashes at the wrong moment a trade can be logged twice; dedupe on `day` + `id`.
 
 ## Backup stocks
-When a picked stock's setup dies with no trade, the bot tries backups. Each backup is first checked against today's prices and skipped if its setup is already dead. No backup is tried after `REPLACE_UNTIL` (default `10:30` IST), because late backups rarely have a live setup. Backups per slot: `REPLACE_CANDIDATES` (default 3).
+When a picked stock's setup dies with no trade, the bot tries backups. Each backup is first checked against today's prices and skipped if its setup is already dead. No backup is tried after `REPLACE_UNTIL` (default `10:00` IST, same as the last entry time: a backup added later could never enter). Backups per slot: `REPLACE_CANDIDATES` (default 3).
 
 ## Restarts
 In live mode the full state (open positions with their stops and entry context, plans, news verdicts, pending backups, journal) is saved after every poll and on shutdown (SIGTERM). After a restart the bot reloads it, re-fetches today's candles and catches up on any stop or target hit while it was down.
@@ -78,3 +78,14 @@ The screen has no password, like the rest of the dashboard: anyone with the URL 
 ## Automatic news check (Gemini)
 Set `GEMINI_API_KEY` (or `LLM_API_KEY_FREE`) in the environment and keep "Automatic news check" on in Settings. Each morning the bot fetches the last 36 hours of headlines for each shortlisted stock (Google News RSS, searched by full company name, exact publish times) and has Gemini classify them. Gemini's own Google Search tool is not used: it hits the free-tier quota (429). Sources shown on the dashboard are the headlines we fetched, never links the model wrote. The market-wide level (normal, elevated, high) is judged from market headlines.
 Fail closed: a stock with no headlines, a failed fetch, no valid verdict, or a block with no cited headline is "unverified" and is not traded (Settings: "Stock the check could not verify"). An unknown market level cuts risk to 75%. If the Gemini call itself fails, the manual paste box appears with the error and a Retry button. Backups for dead slots are checked the same way. Every result, with reasons and sources, is stored in the daily log.
+
+## Exact rule definitions (strategy version 3)
+- Risk and size: `RISK_PCT` is the maximum risk, 1% of equity (cut to 75% / 50% by VIX). Quantity = min(risk / stop distance per share, 50% allocation cap / price). With 20,000 capital the cap often binds, so real risk is usually 0.2% to 0.6% of equity.
+- Initial stop: the opening-range midpoint. The distance from the trigger is then clamped to 0.4% to 1.2% of price, so after clamping the stop may not sit at the midpoint. Target = 2 x that distance.
+- Volume ratio: the breakout 5-minute candle's volume divided by the average 5-minute volume of that same day so far. Must be at least 0.9.
+- Nifty agrees: the latest Nifty 50 price is above Nifty's VWAP for a long, below it for a short.
+- Breakeven and trailing: at +0.5R the stop moves to the entry price. At +1.5R the stop trails 1R behind the best price reached. The 2R target is still active, so the trail only matters between +1.5R and +2R.
+- Not changed in V3, candidates for V4 after 50+ live sessions: breakout-candle stop with the 0.4-1.2% band as a filter, volume vs the same time slot on past days.
+
+## Shadow test: breakeven at +1R
+`node --env-file=.env be-shadow.js` (or `--dir data`) replays every logged trade on the saved 1-minute candles with breakeven at +0.5R (V3) and at +1R, and prints total R, average R, win rate, how often V3 was stopped at breakeven and price then still reached 2R. It changes nothing in live trading.

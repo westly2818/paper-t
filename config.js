@@ -49,7 +49,7 @@ module.exports = {
   indexSymbol: '^NSEI',                    // Nifty 50, used as a market filter
   shortlistSize: num('SHORTLIST', 6),
   backupPoolSize: num('BACKUPS', 15),       // deep bench to replace a stock whose setup dies with no trade
-  replaceUntilMin: hm('REPLACE_UNTIL', 10 * 60 + 30), // no backup is tried for a dead slot after this time (HH:MM IST)
+  replaceUntilMin: hm('REPLACE_UNTIL', 10 * 60), // no backup is tried for a dead slot after this time (HH:MM IST); equal to lastEntryMin, a later backup can never enter
   replaceCandidates: num('REPLACE_CANDIDATES', 3), // backups queued per dead slot, all checked with one pasted reply
   minAtrPct: 1.0,                          // need enough daily movement to be worth trading
   maxAtrPct: 4.5,
@@ -67,7 +67,7 @@ module.exports = {
   squareOffMin: hm('SQUARE_OFF', 15 * 60 + 15),              // everything closed by 15:15
 
   // ---- risk ----
-  riskPct: num('RISK_PCT', 1),             // % of equity risked per trade (distance to stop x quantity)
+  riskPct: num('RISK_PCT', 1),             // MAX % of equity risked per trade; quantity = min(risk / stop distance, allocation cap / price), so the cap often makes real risk lower
   maxAllocPct: num('MAX_ALLOC', 50),       // max % of equity (x leverage) in one stock
   maxPositions: num('MAX_POS', 3),
   maxTradesPerDay: num('MAX_TRADES', 6),
@@ -75,7 +75,7 @@ module.exports = {
   rr: num('RR', 2),                        // target = rr x risk
   minStopPct: 0.4, maxStopPct: 1.2,        // stop distance limits as % of price
   breakevenR: num('BREAKEVEN_R', 0.5),         // move the stop to breakeven once the trade is this many R in profit
-  trailing: process.env.TRAILING !== '0',  // move stop to breakeven at +1R, then trail at +1.5R
+  trailing: process.env.TRAILING !== '0',  // breakeven at breakevenR; at +1.5R the stop trails 1R behind the best price
   slippagePct: 0.02,                       // assumed slippage on market-type fills
 
   // ---- market context ----

@@ -261,12 +261,12 @@ function renderRules(s){
    <li><b>Entry window ${hm(orEnd)} to ${hm(r.lastEntryMin)}.</b> After each closed 5-minute candle, a trade is taken only if <u>all</u> of these are true:
      <ul class="all"><li>the candle closes beyond the range (${r.allowShort?'above the high for a long, below the low for a short':'above the high; shorts are off'}), with a ${r.triggerBufferPct}% buffer</li>
      <li>price is on the right side of VWAP</li>
-     <li>volume is at least ${r.minVolRatio}x the day's average 5-minute volume</li>
+     <li>volume of the breakout candle is at least ${r.minVolRatio}x that day's average 5-minute volume so far</li>
      <li>${r.useIndexFilter?'Nifty agrees (above its VWAP for a long, below for a short)':'Nifty filter is off'}</li>
      <li>price is no more than ${r.maxChasePct}% past the trigger</li>
      <li>fewer than ${r.maxPositions} positions are open and fewer than ${r.maxTradesPerDay} trades were taken today</li></ul></li>
-   <li><b>Size.</b> Risk ${r.riskPct}% of equity per trade. At most ${r.maxAllocPct}% of buying power (capital ${money(r.capital)} x ${r.leverage} leverage) in one stock. Stop is ${r.minStopPct}% to ${r.maxStopPct}% away.</li>
-   <li><b>Exit.</b> Target ${r.rr}R. The stop moves to breakeven at +${r.breakevenR}R${r.trailing?', then trails after +1.5R':''}. Everything is closed at ${hm(r.squareOffMin)}.</li>
+   <li><b>Size and stop.</b> Risk at most ${r.riskPct}% of equity per trade (cut to 75% or 50% when India VIX is high). Quantity is the smaller of risk divided by stop distance and the cap of ${r.maxAllocPct}% of buying power (capital ${money(r.capital)} x ${r.leverage} leverage) in one stock, so real risk is often lower. The stop starts at the opening-range midpoint; its distance is then clamped to ${r.minStopPct}% to ${r.maxStopPct}% of price.</li>
+   <li><b>Exit.</b> Target ${r.rr}R. The stop moves to breakeven at +${r.breakevenR}R${r.trailing?', then from +1.5R trails 1R behind the best price (the target stays active)':''}. Everything is closed at ${hm(r.squareOffMin)}.</li>
    <li><b>Day stop.</b> No more trades after a ${r.dailyLossPct}% loss for the day.</li>
   </ol>`;
 }
