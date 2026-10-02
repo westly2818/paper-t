@@ -256,12 +256,12 @@ function renderRules(s){
   const orEnd=9*60+15+r.orMinutes;
   $('rules').innerHTML=`<div class="why">Strategy version <b>${esc(r.strategyVersion)}</b> &middot; opening-range breakout (momentum). Change any of these on the <a href="/settings">Settings</a> screen.</div>
   <ol>
-   <li><b>Morning plan.</b> From the Nifty 200, keep stocks that move ${r.minAtrPct}% to ${r.maxAtrPct}% a day with enough turnover, rank them by daily trend, and watch the top ${r.shortlistSize} (${r.backupPoolSize} backups; a dead slot is replaced until ${hm(r.replaceUntilMin)}). News check: ${r.newsGuard?'manual (ChatGPT paste each morning)':'off'}.</li>
+   <li><b>Morning plan.</b> From the Nifty 200, keep stocks whose 14-day ATR is between ${r.minAtrPct}% and ${r.maxAtrPct}% of price (their normal daily range, not today's move) and with enough turnover, rank them by daily trend, and watch the top ${r.shortlistSize} (${r.backupPoolSize} backups; a dead slot is replaced until ${hm(r.replaceUntilMin)}). News check: ${r.newsGuard?'manual (ChatGPT paste each morning)':'off'}.</li>
    <li><b>Opening range 09:15 to ${hm(orEnd)}.</b> Record each stock's high and low. No trading. The range must be ${r.minOrPct}% to ${r.maxOrPct}% wide.</li>
    <li><b>Entry window ${hm(orEnd)} to ${hm(r.lastEntryMin)}.</b> After each closed 5-minute candle, a trade is taken only if <u>all</u> of these are true:
      <ul class="all"><li>the candle closes beyond the range (${r.allowShort?'above the high for a long, below the low for a short':'above the high; shorts are off'}), with a ${r.triggerBufferPct}% buffer</li>
      <li>price is on the right side of VWAP</li>
-     <li>volume of the breakout candle is at least ${r.minVolRatio}x that day's average 5-minute volume so far</li>
+     <li>the breakout candle's volume is at least ${r.minVolRatio}x the average volume of all of today's closed 5-minute candles so far, counting the opening-range candles and the breakout candle itself</li>
      <li>${r.useIndexFilter?'Nifty agrees (above its VWAP for a long, below for a short)':'Nifty filter is off'}</li>
      <li>price is no more than ${r.maxChasePct}% past the trigger</li>
      <li>fewer than ${r.maxPositions} positions are open and fewer than ${r.maxTradesPerDay} trades were taken today</li></ul></li>
