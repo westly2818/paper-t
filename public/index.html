@@ -215,7 +215,7 @@ function chart(s){
   g.strokeStyle=col;g.lineWidth=2;g.lineJoin='round';g.stroke();
   g.lineTo(w,Y(s.cap));g.lineTo(0,Y(s.cap));g.closePath();g.globalAlpha=.12;g.fillStyle=col;g.fill();g.globalAlpha=1;
 }
-const legHtml=l=>`<div class="leg"><div class="row"><b>${l.side==='long'?'Buy above':'Short below'} ${inr(l.trigger)}</b><span>Stop <b>${inr(l.sl)}</b></span><span>Target <b>${inr(l.tp)}</b></span><span>Qty <b>${l.qty}</b></span><span>Risk <b>${money(l.risk)}</b></span><span class="chip ${l.status}">${l.status}</span></div>${l.note?`<div class="note">${esc(l.note)}</div>`:''}</div>`;
+const legHtml=l=>`<div class="leg"><div class="row"><b>${l.side==='long'?'Buy above':'Short below'} ${inr(l.trigger)}</b><span>Stop <b>${inr(l.sl)}</b></span><span>Target <b>${inr(l.tp)}</b></span><span>Qty <b>${l.qty}</b></span><span>Risk <b>${money(l.risk)}</b></span><span>Target profit <b>${money(l.qty*Math.abs(l.tp-l.trigger))}</b></span><span>Invest <b>${money(l.qty*l.trigger)}</b></span><span class="chip ${l.status}">${l.status}</span></div>${l.note?`<div class="note">${esc(l.note)}</div>`:''}</div>`;
 
 const hm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 const BLOCK_TEXT={'weak-volume':'Volume too light','wrong-side-of-vwap':'Wrong side of VWAP','nifty-against':'Nifty against the trade','chasing':'Price ran too far past the trigger','stop-level-hit-before-breakout':'Stop level hit before a breakout (setup died)','target-hit-before-entry':'Target reached without an entry (setup died)'};
@@ -330,7 +330,7 @@ function render(s){
       const plan=planBy[st.sym];
       const legsHtml=Object.entries(st.legs||{}).filter(([,l])=>l.status==='waiting').map(([side,l])=>{
         const pl=plan&&plan.legs&&plan.legs[side],ev=pl&&pl.lastEval;
-        const head=`<div class="why" style="margin-top:6px"><b>${side==='long'?'Buy above':'Short below'} ${inr(l.trigger)}</b> &middot; stop ${inr(l.sl)} &middot; target ${inr(l.tp)}${l.qty?' &middot; qty '+l.qty:''}</div>`;
+        const head=`<div class="why" style="margin-top:6px"><b>${side==='long'?'Buy above':'Short below'} ${inr(l.trigger)}</b> &middot; stop ${inr(l.sl)} &middot; target ${inr(l.tp)}${l.qty?' &middot; qty '+l.qty+' &middot; risk '+money(l.risk)+' &middot; target profit '+money(l.qty*Math.abs(l.tp-l.trigger)):''}</div>`;
         const last=ev?`<details class="dd"><summary><span class="badge ${ev.allOk?'ok':'no'}">${ev.allOk?'All conditions met':'Not triggered'}</span> Last closed 5-min candle (${tm(ev.at)}): ${ev.checks.filter(c=>c.ok===true).length} of ${ev.checks.length} true${ev.failed.length?'. Blocked by: '+esc(ev.failed.join(', ')):''}</summary>${checksHtml(ev.checks)}</details>`:'<div class="why">No closed candle checked yet since the range formed.</div>';
         const now=`<details class="dd"><summary>Right now at the live price: ${l.checks.filter(c=>c.ok===true).length} of ${l.checks.length} true${l.checks.some(c=>c.ok===false)?'. Not met: '+esc(l.checks.filter(c=>c.ok===false).map(c=>c.label).join(', ')):'. All met (the bot still waits for the candle to close)'}</summary>${checksHtml(l.checks)}</details>`;
         return head+last+now;
