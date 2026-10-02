@@ -60,7 +60,7 @@ module.exports = {
   orMinutes: 15,                           // opening range = first 15 minutes
   triggerBufferPct: 0.05,                  // enter a little beyond the range edge
   minOrPct: 0.3, maxOrPct: 2.5,            // skip days where the opening range is too tight or too wide
-  minVolRatio: num('MIN_VOL_RATIO', 0.9),                        // breakout candle volume vs day's average 5-min volume
+  minVolRatio: num('MIN_VOL_RATIO', 0.9),                        // breakout candle volume vs the average of today's closed 5-min candles so far (opening-range candles and the breakout candle included)
   maxChasePct: 0.4,                        // do not buy if price already ran this far past the trigger
   useIndexFilter: process.env.INDEX_FILTER !== '0',
   lastEntryMin: hm('LAST_ENTRY', 10 * 60),                    // frozen rule: no new trades after 10:00 (was 14:30; only the 9:30-10:00 window showed a positive edge in the 59-session test)
