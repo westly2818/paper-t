@@ -89,3 +89,7 @@ Fail closed: a stock with no headlines, a failed fetch, no valid verdict, or a b
 
 ## Shadow test: breakeven at +1R
 `node --env-file=.env be-shadow.js` (or `--dir data`) replays every logged trade on the saved 1-minute candles with breakeven at +0.5R (V3) and at +1R, and prints total R, average R, win rate, how often V3 was stopped at breakeven and price then still reached 2R. It changes nothing in live trading.
+
+## Comparing strategies (strategies.js)
+The live bot trades V3 only, but it logs every breakout candle (taken or rejected) with all its conditions and the volume baseline (`rvolSlot` = breakout candle vs the same 5-minute slot over up to 20 earlier sessions, `rvolCum` = the morning so far vs the same period, `gapPct`), and saves the day's 1-minute candles. `node --env-file=.env strategies.js` (or `--dir data`, `--since YYYY-MM-DD`) then runs several rule sets on those same signals with exact 1-minute exits: V3, breakeven at +1R, no breakeven, RVOL and gap filters, and a V4 candidate. Add a line to `VARIANTS` in the file to test another. It prints trades, win %, average R with a 95% range, total R and profit factor per variant, plus how much evidence there is. Volume features exist only for sessions after this change. Study only: the baseline never affects a live decision.
+After one week (about 5 sessions) V3 will have a handful of trades, so the 95% ranges will overlap and no variant can be called better. Expect a first real hint at 30 trades and a decision at 100+.
