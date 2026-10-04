@@ -2,6 +2,7 @@
 // of history; 1-minute data only goes back 7 days).
 //   node compare-v3-v4.js                 (last 30 sessions)
 //   node compare-v3-v4.js --days 20
+//   node compare-v3-v4.js --tv data/tv-5m --days 60   (5-minute CSV files exported from TradingView: NIFTY_5.csv, <SYMBOL>_5.csv)
 // APPROXIMATIONS, same for every version so the comparison stays fair:
 //  - stops, targets and breakeven are checked on 5-minute bars (engine uses 1-minute); stop is checked before target
 //  - no news check, no backup stocks for dead slots, each day starts with the full capital
@@ -27,7 +28,7 @@ const CACHE = path.join(__dirname, 'data', 'hist-cache');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function cached(sym, interval, range) {
   fs.mkdirSync(CACHE, { recursive: true });
-  const f = path.join(CACHE, `${sym.replace(/[^A-Za-z0-9]/g, '_')}-${interval}-${dayKey(Date.now())}.json`);
+  const f = path.join(CACHE, `${sym.replace(/[^A-Za-z0-9]/g, '_')}-${interval}-${range}-${dayKey(Date.now())}.json`);
   if (fs.existsSync(f)) return JSON.parse(fs.readFileSync(f, 'utf8'));
   const d = await yf(sym, interval, range);
   fs.writeFileSync(f, JSON.stringify(d));
@@ -278,12 +279,35 @@ const f = (v, d = 2) => (v == null || !isFinite(v) ? '-' : v.toFixed(d));
 (async () => {
   console.log('Downloading 5-minute and daily candles from Yahoo (cached for today in data/hist-cache) ...');
   const syms = base.watchlist, extra = [base.indexSymbol, ...SECTOR_INDEXES];
-  const intra = await loadAll([...syms, ...extra], '5m', '60d');
-  const daily = await loadAll([...syms, base.indexSymbol, base.vixSymbol], '1d', '1y');
+  const tv = arg('tv'), fyers = arg('fyers');
+  let intra;
+  if (tv) {
+    // TradingView export: time_utc,open,high,low,close,volume. Sessions can end at 15:10 (72 bars) instead of 15:25.
+    intra = {};
+    const readCsv = f => fs.readFileSync(f, 'utf8').trim().split('\n').slice(1).map(l => l.split(',')).map(r => ({ t: Date.parse(r[0]), o: +r[1], h: +r[2], l: +r[3], c: +r[4], v: +r[5] }));
+    const nf = path.join(tv, 'NIFTY_5.csv');
+    if (!fs.existsSync(nf)) throw new Error('Missing ' + nf);
+    intra[base.indexSymbol] = readCsv(nf);
+    let have = 0;
+    for (const s of syms) { const f = path.join(tv, s.replace(/[^A-Za-z0-9_&-]/g, '_') + '_5.csv'); if (fs.existsSync(f)) { intra[s] = readCsv(f); have++; } }
+    console.log(`TradingView files: ${have} of ${syms.length} stocks loaded from ${tv}`);
+  } else if (fyers) {
+    // Fyers export (fyers-download.js): 1-minute CSVs, NIFTY.csv and <SYMBOL>.csv. Combined into 5-minute candles here.
+    intra = {};
+    const { aggregate } = require('./lib/indicators');
+    const readCsv = f => aggregate(fs.readFileSync(f, 'utf8').trim().split('\n').slice(1).map(l => l.split(',')).map(r => ({ t: Date.parse(r[0]), o: +r[1], h: +r[2], l: +r[3], c: +r[4], v: +r[5] })), 5);
+    const nf = path.join(fyers, 'NIFTY.csv');
+    if (!fs.existsSync(nf)) throw new Error('Missing ' + nf);
+    intra[base.indexSymbol] = readCsv(nf);
+    let have = 0;
+    for (const s of syms) { const f = path.join(fyers, s.replace(/[^A-Za-z0-9_&-]/g, '_') + '.csv'); if (fs.existsSync(f)) { intra[s] = readCsv(f); have++; } }
+    console.log(`Fyers files: ${have} of ${syms.length} stocks loaded from ${fyers}`);
+  } else intra = await loadAll([...syms, ...extra], '5m', '60d');
+  const daily = await loadAll([...syms, base.indexSymbol, base.vixSymbol], '1d', '2y');
   const idx = intra[base.indexSymbol];
   if (!idx) throw new Error('No Nifty 5-minute data');
   const idxDays = byDay(idx);
-  const days = Object.keys(idxDays).sort().filter(d => idxDays[d].length >= 74);
+  const days = Object.keys(idxDays).sort().filter(d => idxDays[d].length >= 72);
   const test = days.slice(-DAYS);
   console.log(`Sessions with complete data: ${days.length}. Testing the last ${test.length}: ${test[0]} to ${test[test.length - 1]}\n`);
 
@@ -296,7 +320,7 @@ const f = (v, d = 2) => (v == null || !isFinite(v) ? '-' : v.toFixed(d));
       if (!daily[s] || !intraByDay[s]) continue;
       const d = daily[s].filter(c => dayKey(c.t) < day);
       const info = analyzeDaily(s, d);
-      if (info && (intraByDay[s][day] || []).length >= 74) infos.push(info);
+      if (info && (intraByDay[s][day] || []).length >= 72) infos.push(info);
     }
     const { picked } = pickStocks(infos, base, base.capital);
     if (!picked.length) continue;
@@ -304,7 +328,7 @@ const f = (v, d = 2) => (v == null || !isFinite(v) ? '-' : v.toFixed(d));
     const prior = days.filter(d => d < day).slice(-20);
     for (const info of picked) {
       bars[info.sym] = intraByDay[info.sym][day];
-      const hist = prior.map(d => intraByDay[info.sym][d]).filter(a => a && a.length >= 74);
+      const hist = prior.map(d => intraByDay[info.sym][d]).filter(a => a && a.length >= 72);
       baseline[info.sym] = {};
       if (hist.length >= 10) {
         for (let k = 0; k < 75; k++) {
