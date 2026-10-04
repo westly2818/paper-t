@@ -9,7 +9,7 @@
     "replay": "MODE=replay node server.js",
     "demo": "MODE=demo node server.js",
     "backtest": "node backtest.js",
-    "test": "node --test test/volume-ratio.test.js test/shadow.test.js"
+    "test": "node --test test/volume-ratio.test.js test/shadow.test.js test/breakout-features.test.js"
   },
   "engines": {
     "node": ">=18"
