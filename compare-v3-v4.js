@@ -49,10 +49,27 @@ async function loadAll(symbols, interval, range) {
 }
 const byDay = bars => { const m = {}; for (const b of bars) (m[dayKey(b.t)] = m[dayKey(b.t)] || []).push(b); return m; };
 
+// 1-minute candles as compact arrays (Fyers mode): MIN[sym] = { T, O, H, L, C }. Empty in 5-minute-only modes.
+const MIN = {};
+function minutesBetween(sym, t0, t1) {
+  const m = MIN[sym];
+  if (!m) return [];
+  let lo = 0, hi = m.T.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (m.T[mid] < t0) lo = mid + 1; else hi = mid; }
+  const out = [];
+  for (let j = lo; j < m.T.length && m.T[j] < t1; j++) out.push({ t: m.T[j], o: m.O[j], h: m.H[j], l: m.L[j], c: m.C[j], v: m.V[j] });
+  return out;
+}
+
 // ---------------- variants ----------------
 const V3 = { name: 'V3 (frozen live rules)', beR: 0.5 };
 const V4 = { name: 'V4 (RVOL + cum RVOL + sector + BE 1R)', beR: 1, histRvol: 1.0, cumRvol: 1.0, sector: true };
-const VARIANTS = [
+// V5 candidates (frozen before the first run; do not tune): regime filter from Nifty's previous daily close vs its 20-day average,
+// 0.5% risk per trade, at most 4 trades a day, 2% day stop. V5b also needs the 20-day average on the right side of the 50-day.
+const V5a = { name: 'V5a regime (close vs 20DMA), risk 0.5%, 4 trades, 2% day stop', beR: 0.5, regime: 'ma20', riskMult: 0.5, maxTrades: 4, dayStop: 2 };
+const V5b = { name: 'V5b = V5a + 20DMA vs 50DMA', beR: 0.5, regime: 'ma20-50', riskMult: 0.5, maxTrades: 4, dayStop: 2 };
+const E1 = { name: 'E1 1-minute entry (same rules, judged each minute)', beR: 0.5, minuteEntry: true };
+const VARIANTS = process.argv.includes('--e1') ? [V3, E1] : process.argv.includes('--v5') ? [V3, V5a, V5b] : [
   V3, V4,
   { name: '  V3 + same-slot RVOL >= 1.0', beR: 0.5, histRvol: 1.0 },
   { name: '  V3 + same-slot RVOL >= 1.2', beR: 0.5, histRvol: 1.2 },
@@ -67,8 +84,8 @@ const VARIANTS = [
 
 // ---------------- one session ----------------
 function simDay(day, V, ctx) {
-  const { picked, bars, idxBars, secBars, vixPrev, baseline } = ctx;
-  const cfg = { ...base, riskPct: base.riskPct * (vixPrev >= base.vixHigh ? 0.5 : vixPrev >= base.vixElevated ? 0.75 : 1) };
+  const { picked, bars, idxBars, secBars, vixPrev, baseline, regime } = ctx;
+  const cfg = { ...base, riskPct: base.riskPct * (V.riskMult || 1) * (vixPrev >= base.vixHigh ? 0.5 : vixPrev >= base.vixElevated ? 0.75 : 1), maxTradesPerDay: V.maxTrades || base.maxTradesPerDay, dailyLossPct: V.dayStop || base.dailyLossPct };
   const slip = cfg.slippagePct / 100;
   let realized = 0, positions = [], tradesToday = 0, halted = false;
   const trades = [];
@@ -92,30 +109,25 @@ function simDay(day, V, ctx) {
     if (Object.values(plan.legs).some(l => l.status === 'waiting')) plans.push(plan);
   }
 
-  const marks = sym => { const b = bars[sym]; return b[b.length - 1]; };
+  let cur = 3; // index of the 5-minute bar being processed: marks must never look ahead of it
+  const marks = sym => { const b = bars[sym]; return b[Math.min(cur, b.length - 1)]; };
   const close = (pos, price, reason, t) => {
     const dir = pos.side === 'long' ? 1 : -1;
     const gross = (price - pos.entry) * dir * pos.qty, fee = charges(dir === 1 ? 'SELL' : 'BUY', pos.qty * price);
     const net = gross - fee - pos.fee;
     realized += gross - fee;
     positions = positions.filter(p => p !== pos);
-    trades.push({ day, sym: pos.sym, side: pos.side, net, r: net / (pos.R * pos.qty), reason, gapPct: pos.gapPct, sector: pos.sector, tIn: pos.t, tOut: t, entry: pos.entry, sl0: pos.sl0, tp: pos.tp, R: pos.R, feat: pos.feat });
+    trades.push({ day, sym: pos.sym, side: pos.side, net, r: net / (pos.R * pos.qty), reason, gapPct: pos.gapPct, sector: pos.sector, tIn: pos.t, tEntry: pos.tEntry, tOut: t, entry: pos.entry, sl0: pos.sl0, tp: pos.tp, R: pos.R, feat: pos.feat });
   };
   const slipPx = (px, side, out) => px * (1 + (side === 'long' ? -1 : 1) * (out ? 1 : -1) * slip);
 
   const n = bars[picked[0].sym].length;
   const idxAt = (arr, endT) => { const a = arr.filter(k => k.t < endT); return a.length ? (a[a.length - 1].c > vwap(a) ? 'up' : 'down') : 'unknown'; };
 
-  for (let i = 3; i < n; i++) {
-    const t = (bars[picked[0].sym][i] || {}).t;
-    if (t == null) break;
-    const mod = minOfDay(t);
-
-    // 1) exits on this bar (positions entered on an earlier bar)
-    for (const pos of positions.slice()) {
-      const k = bars[pos.sym].find(x => x.t === t);
-      if (!k || k.t <= pos.t) continue;
-      if (mod >= SQ) { close(pos, r05(slipPx(k.o, pos.side, true)), 'Square-off', t); continue; }
+  // walk a position through the given candles: stops, target, breakeven, trailing, 15:15 square-off
+  const manage = (pos, ks) => {
+    for (const k of ks) {
+      if (minOfDay(k.t) >= SQ) { close(pos, r05(slipPx(k.o, pos.side, true)), 'Square-off', k.t); break; }
       const long = pos.side === 'long';
       let hit = null;
       if (long) {
@@ -125,7 +137,7 @@ function simDay(day, V, ctx) {
         if (k.o >= pos.sl) hit = [k.o * (1 + slip), 'Stop (gap)']; else if (k.h >= pos.sl) hit = [pos.sl * (1 + slip), 'Stop'];
         else if (k.o <= pos.tp) hit = [k.o, 'Target']; else if (k.l <= pos.tp) hit = [pos.tp, 'Target'];
       }
-      if (hit) { close(pos, r05(hit[0]), hit[1], t); continue; }
+      if (hit) { close(pos, r05(hit[0]), hit[1], k.t); break; }
       const dir = long ? 1 : -1;
       pos.best = dir === 1 ? Math.max(pos.best, k.h) : Math.min(pos.best, k.l);
       const g = ((pos.best - pos.entry) * dir) / pos.R;
@@ -135,10 +147,71 @@ function simDay(day, V, ctx) {
       ns = r05(ns);
       if (dir === 1 ? ns > pos.sl : ns < pos.sl) pos.sl = ns;
     }
+  };
+
+  for (let i = 3; i < n; i++) {
+    const t = (bars[picked[0].sym][i] || {}).t;
+    if (t == null) break;
+    const mod = minOfDay(t);
+    cur = i;
+
+    // 1) exits across this bar (positions entered on an earlier bar), candle by candle: 1-minute when available
+    for (const pos of positions.slice()) {
+      if (t + 300000 <= pos.tEntry) continue;
+      const m1 = MIN[pos.sym] ? minutesBetween(pos.sym, t, t + 300000) : [];
+      const ks = (m1.length ? m1 : [bars[pos.sym][i]].filter(Boolean)).filter(k => k.t >= pos.tEntry);
+      manage(pos, ks);
+    }
     if (mod >= SQ) break;
 
+    // 2b) variant "1-minute entry": same conditions, judged on every 1-minute close instead of waiting for the 5-minute close
+    if (V.minuteEntry && !halted && MIN[picked[0].sym]) {
+      const dayStart = t - (mod - OPEN) * 60000;
+      for (let m = 0; m < 5 && !halted; m++) {
+        const te = t + 60000 * (m + 1);
+        if (minOfDay(te) > cfg.lastEntryMin) break;
+        const ixm = minutesBetween(base.indexSymbol, dayStart, te);
+        const idxState1 = ixm.length ? (ixm[ixm.length - 1].c > vwap(ixm) ? 'up' : 'down') : 'unknown';
+        for (const plan of plans) {
+          if (plan.status !== 'waiting') continue;
+          if (positions.length >= cfg.maxPositions || tradesToday >= cfg.maxTradesPerDay) break;
+          const mm = minutesBetween(plan.sym, dayStart, te);
+          const mc = mm[mm.length - 1];
+          if (!mc || mc.t !== te - 60000) continue;
+          const vw1 = vwap(mm), avgV = avg(mm.map(x => x.v)), vr1 = avgV > 0 ? mc.v / avgV : 1;
+          for (const side of ['long', 'short']) {
+            const leg = plan.legs[side];
+            if (!leg || leg.status !== 'waiting') continue;
+            const dir = side === 'long' ? 1 : -1;
+            if (dir === 1 ? mc.l <= leg.sl && mc.c < leg.trigger : mc.h >= leg.sl && mc.c > leg.trigger) { leg.status = 'expired'; continue; }
+            if (dir === 1 ? mc.h >= leg.tp : mc.l <= leg.tp) { leg.status = 'expired'; continue; }
+            if (!(dir === 1 ? mc.c > leg.trigger : mc.c < leg.trigger)) continue;
+            if (!(dir === 1 ? mc.c > vw1 : mc.c < vw1)) continue;
+            if (vr1 < cfg.minVolRatio) continue;
+            if (idxState1 !== 'unknown' && idxState1 !== (dir === 1 ? 'up' : 'down')) continue;
+            if ((Math.abs(mc.c - leg.trigger) / leg.trigger) * 100 > cfg.maxChasePct) continue;
+            const fill = r05(mc.c * (1 + dir * slip)), dist = Math.abs(fill - leg.sl);
+            if (dist < fill * 0.002) { leg.status = 'skipped'; continue; }
+            const equity = eq() + positions.reduce((a, p) => a + (marks(p.sym).c - p.entry) * (p.side === 'long' ? 1 : -1) * p.qty, 0);
+            const used = positions.reduce((a, p) => a + p.qty * p.entry, 0);
+            const qty = Math.floor(Math.min((equity * cfg.riskPct) / 100 / dist, (equity * cfg.leverage * cfg.maxAllocPct) / 100 / fill, (equity * cfg.leverage - used) / fill));
+            if (qty < 1 || qty * dist < ((equity * cfg.riskPct) / 100) * 0.25) { leg.status = 'skipped'; continue; }
+            const fee = charges(dir === 1 ? 'BUY' : 'SELL', qty * fill);
+            realized -= fee;
+            const pos = { sym: plan.sym, side, qty, entry: fill, sl: leg.sl, sl0: leg.sl, feat: { volRatio: vr1, rvolSlot: null, rvolCum: null, sectorState: 'none', sectorAgrees: null, niftyState: idxState1, gapPct: plan.gapPct, minute: minOfDay(te), crossedBefore: 0, slope15: 0, vwapSlope15: 0 }, tp: r05(fill + dir * cfg.rr * dist), R: dist, t: te - 59999, tEntry: te, best: fill, fee, gapPct: plan.gapPct, sector: plan.sector };
+            positions.push(pos);
+            tradesToday++; plan.status = 'entered'; leg.status = 'entered';
+            if (plan.legs.long && plan.legs.long !== leg) plan.legs.long.status = 'cancelled';
+            if (plan.legs.short && plan.legs.short !== leg) plan.legs.short.status = 'cancelled';
+            manage(pos, minutesBetween(plan.sym, te, t + 300000));
+            break;
+          }
+        }
+      }
+    }
+
     // 2) entries on this bar's close
-    if (!halted && mod + 5 <= cfg.lastEntryMin) {
+    if (!V.minuteEntry && !halted && mod + 5 <= cfg.lastEntryMin) {
       const endT = t + 300000;
       const idxState = idxAt(idxBars, endT);
       for (const plan of plans) {
@@ -163,7 +236,9 @@ function simDay(day, V, ctx) {
           const bl = baseline[plan.sym] && baseline[plan.sym][mod];
           const cumVol = done.reduce((a, x) => a + x.v, 0);
           const secSt = plan.sector ? idxAt(secBars[plan.sector] || [], endT) : 'none';
-          const feat = { volRatio, rvolSlot: bl && bl.slot > 0 ? b.v / bl.slot : null, rvolCum: bl && bl.cum > 0 ? cumVol / bl.cum : null, sectorState: secSt, sectorAgrees: secSt === 'none' || secSt === 'unknown' ? null : secSt === (dir === 1 ? 'up' : 'down'), niftyState: idxState, gapPct: plan.gapPct, minute: mod };
+          const crossedBefore = done.slice(3, i).filter(x => (dir === 1 ? x.c > leg.trigger : x.c < leg.trigger)).length;
+          const vwNow = vwap(done), vwThen = vwap(done.slice(0, i - 2));
+          const feat = { crossedBefore, slope15: ((b.c - done[i - 3].c) / done[i - 3].c) * 100 * dir, vwapSlope15: ((vwNow - vwThen) / vwThen) * 100 * dir, volRatio, rvolSlot: bl && bl.slot > 0 ? b.v / bl.slot : null, rvolCum: bl && bl.cum > 0 ? cumVol / bl.cum : null, sectorState: secSt, sectorAgrees: secSt === 'none' || secSt === 'unknown' ? null : secSt === (dir === 1 ? 'up' : 'down'), niftyState: idxState, gapPct: plan.gapPct, minute: mod };
           if (V.histRvol && !(bl && bl.slot > 0 && b.v / bl.slot >= V.histRvol)) continue;
           if (V.cumRvol) {
             const cum = done.reduce((a, x) => a + x.v, 0);
@@ -172,6 +247,11 @@ function simDay(day, V, ctx) {
           if (V.sector && plan.sector) {
             const s = idxAt(secBars[plan.sector] || [], endT);
             if (s !== 'unknown' && s !== (dir === 1 ? 'up' : 'down')) continue;
+          }
+          if (V.regime && regime) {
+            const up = regime.prevClose > regime.sma20 && (V.regime !== 'ma20-50' || regime.sma20 > regime.sma50);
+            const down = regime.prevClose < regime.sma20 && (V.regime !== 'ma20-50' || regime.sma20 < regime.sma50);
+            if (dir === 1 ? !up : !down) continue;
           }
           if (V.sectorCap && plan.sector && positions.filter(p => p.sector === plan.sector).length >= V.sectorCap) continue;
 
@@ -184,7 +264,7 @@ function simDay(day, V, ctx) {
           if (qty < 1 || qty * dist < ((equity * cfg.riskPct) / 100) * 0.25) { leg.status = 'skipped'; continue; }
           const fee = charges(dir === 1 ? 'BUY' : 'SELL', qty * fill);
           realized -= fee;
-          positions.push({ sym: plan.sym, side, qty, entry: fill, sl: leg.sl, sl0: leg.sl, feat, tp: r05(fill + dir * cfg.rr * dist), R: dist, t: endT - 300000 + 1, best: fill, fee, gapPct: plan.gapPct, sector: plan.sector });
+          positions.push({ sym: plan.sym, side, qty, entry: fill, sl: leg.sl, sl0: leg.sl, feat, tp: r05(fill + dir * cfg.rr * dist), R: dist, t: endT - 300000 + 1, tEntry: endT, best: fill, fee, gapPct: plan.gapPct, sector: plan.sector });
           tradesToday++; plan.status = 'entered'; leg.status = 'entered';
           if (plan.legs.long && plan.legs.long !== leg) plan.legs.long.status = 'cancelled';
           if (plan.legs.short && plan.legs.short !== leg) plan.legs.short.status = 'cancelled';
@@ -201,6 +281,7 @@ function simDay(day, V, ctx) {
       halted = true;
     }
   }
+  cur = n - 1;
   for (const p of positions.slice()) { const m = marks(p.sym); close(p, m.c, 'Data end', m.t); }
   return trades;
 }
@@ -211,7 +292,7 @@ function replay(t, m5, beR) {
   const d = t.side === 'long' ? 1 : -1, slip = base.slippagePct / 100;
   let sl = t.sl0, best = t.entry, ambiguous = false;
   for (const k of m5) {
-    if (k.t <= t.tIn) continue;
+    if (k.t < t.tEntry) continue;
     if (minOfDay(k.t) >= SQ) return { r: ((k.o * (1 - d * slip) - t.entry) * d) / t.R, ambiguous };
     const hitSl = d === 1 ? k.l <= sl : k.h >= sl, hitTp = d === 1 ? k.h >= t.tp : k.l <= t.tp;
     if (hitSl && hitTp) ambiguous = true;
@@ -231,8 +312,8 @@ function replay(t, m5, beR) {
 
 function featureReport(trades, intraByDay) {
   const rows = trades.map(t => {
-    const m5 = intraByDay[t.sym][t.day], d = t.side === 'long' ? 1 : -1;
-    const after = m5.filter(k => k.t > t.tIn && k.t < t.tOut + 1);
+    const m5 = MIN[t.sym] ? minutesBetween(t.sym, t.tEntry, t.tEntry + 7 * 3600e3) : intraByDay[t.sym][t.day], d = t.side === 'long' ? 1 : -1;
+    const after = m5.filter(k => k.t >= t.tEntry && k.t <= t.tOut);
     const mfe = Math.max(0, ...after.map(k => (d === 1 ? k.h - t.entry : t.entry - k.l) / t.R));
     const mae = Math.max(0, ...after.map(k => (d === 1 ? t.entry - k.l : k.h - t.entry) / t.R));
     const a = replay(t, m5, 0.5), b = replay(t, m5, 1), c = replay(t, m5, 99);
@@ -259,6 +340,18 @@ V3 trades with exit what-ifs on the same entries (gross R, 5-minute replay, ${ro
   bucket('cumulative RVOL (volume since 9:15 vs same period on past days)', r => r.feat.rvolCum, [0, 0.7, 1.0, 1.3, 99]);
   bucket('same-slot RVOL (breakout candle vs same candle on past days)', r => r.feat.rvolSlot, [0, 0.7, 1.0, 1.5, 99]);
   bucket('opening gap, absolute %', r => Math.abs(r.gapPct), [0, 0.5, 1, 2, 3, 99]);
+  // exploratory buckets (momentum idea tests): development and holdout side by side, so a pattern must show up in both
+  const split2 = (title, key, edges, names) => {
+    console.log('\n  ' + title + ' (development | holdout):');
+    for (let i = 0; i < edges.length - 1; i++) {
+      const cell = r0 => { const g = r0.filter(r => { const v = key(r); return v != null && v >= edges[i] && v < edges[i + 1]; }); return g.length ? 'n=' + String(g.length).padStart(3) + ' avg ' + f(g.reduce((x, r) => x + r.r, 0) / g.length).padStart(5) + 'R' : 'none'.padEnd(14); };
+      console.log('    ' + (names ? names[i] : edges[i] + ' to ' + (edges[i + 1] >= 99 ? 'more' : edges[i + 1])).padEnd(18) + cell(rows.filter(r => r.day <= '2026-03-31')) + '   |   ' + cell(rows.filter(r => r.day > '2026-03-31')));
+    }
+  };
+  split2('entry time (minutes after 09:15 of the 5-minute close)', r => r.feat.minute - 555, [0, 20, 30, 40, 99], ['09:30-09:35', '09:35-09:45', '09:45-09:55', '09:55-10:00']);
+  split2('price momentum over the last 15 minutes, % in trade direction', r => r.feat.slope15, [-99, 0.2, 0.5, 1, 99], ['under 0.2%', '0.2-0.5%', '0.5-1%', 'over 1%']);
+  split2('VWAP slope over the last 15 minutes, % in trade direction', r => r.feat.vwapSlope15, [-99, 0, 0.1, 99], ['falling', '0-0.1%', 'over 0.1%']);
+  split2('earlier closes beyond the trigger (0 = fresh breakout)', r => r.feat.crossedBefore, [0, 1, 2, 99], ['fresh (0)', '1 before', '2 or more']);
   const sec = v => rows.filter(r => r.feat.sectorAgrees === v);
   console.log(`
   By sector index: agrees n=${sec(true).length} avg ${f(sec(true).reduce((x, r) => x + r.r, 0) / (sec(true).length || 1))}R | against n=${sec(false).length} avg ${f(sec(false).reduce((x, r) => x + r.r, 0) / (sec(false).length || 1))}R | no sector n=${sec(null).length}`);
@@ -278,7 +371,8 @@ const f = (v, d = 2) => (v == null || !isFinite(v) ? '-' : v.toFixed(d));
 
 (async () => {
   console.log('Downloading 5-minute and daily candles from Yahoo (cached for today in data/hist-cache) ...');
-  const syms = base.watchlist, extra = [base.indexSymbol, ...SECTOR_INDEXES];
+  const onlyList = arg('only') ? new Set(fs.readFileSync(arg('only'), 'utf8').split(/\s+/).filter(Boolean)) : null;
+  const syms = base.watchlist.filter(s => !onlyList || onlyList.has(s)), extra = [base.indexSymbol, ...SECTOR_INDEXES];
   const tv = arg('tv'), fyers = arg('fyers');
   let intra;
   if (tv) {
@@ -295,12 +389,24 @@ const f = (v, d = 2) => (v == null || !isFinite(v) ? '-' : v.toFixed(d));
     // Fyers export (fyers-download.js): 1-minute CSVs, NIFTY.csv and <SYMBOL>.csv. Combined into 5-minute candles here.
     intra = {};
     const { aggregate } = require('./lib/indicators');
-    const readCsv = f => aggregate(fs.readFileSync(f, 'utf8').trim().split('\n').slice(1).map(l => l.split(',')).map(r => ({ t: Date.parse(r[0]), o: +r[1], h: +r[2], l: +r[3], c: +r[4], v: +r[5] })), 5);
+    // The 1-minute candles stay in MIN (compact arrays, used for exact exits); 5-minute candles drive the entry rules.
+    const readCsv = (f, key) => {
+      const rows = fs.readFileSync(f, 'utf8').trim().split('\n').slice(1).map(l => l.split(','));
+      const n = rows.length, m = { T: new Float64Array(n), O: new Float64Array(n), H: new Float64Array(n), L: new Float64Array(n), C: new Float64Array(n), V: new Float64Array(n) };
+      const objs = new Array(n);
+      for (let j = 0; j < n; j++) {
+        const r = rows[j], t = Date.parse(r[0]);
+        m.T[j] = t; m.O[j] = +r[1]; m.H[j] = +r[2]; m.L[j] = +r[3]; m.C[j] = +r[4]; m.V[j] = +r[5];
+        objs[j] = { t, o: m.O[j], h: m.H[j], l: m.L[j], c: m.C[j], v: +r[5] };
+      }
+      if (!arg('fiveonly')) MIN[key] = m;
+      return aggregate(objs, 5);
+    };
     const nf = path.join(fyers, 'NIFTY.csv');
     if (!fs.existsSync(nf)) throw new Error('Missing ' + nf);
-    intra[base.indexSymbol] = readCsv(nf);
+    intra[base.indexSymbol] = readCsv(nf, base.indexSymbol);
     let have = 0;
-    for (const s of syms) { const f = path.join(fyers, s.replace(/[^A-Za-z0-9_&-]/g, '_') + '.csv'); if (fs.existsSync(f)) { intra[s] = readCsv(f); have++; } }
+    for (const s of syms) { const f = path.join(fyers, s.replace(/[^A-Za-z0-9_&-]/g, '_') + '.csv'); if (fs.existsSync(f)) { intra[s] = readCsv(f, s); have++; } }
     console.log(`Fyers files: ${have} of ${syms.length} stocks loaded from ${fyers}`);
   } else intra = await loadAll([...syms, ...extra], '5m', '60d');
   const daily = await loadAll([...syms, base.indexSymbol, base.vixSymbol], '1d', '2y');
@@ -308,7 +414,8 @@ const f = (v, d = 2) => (v == null || !isFinite(v) ? '-' : v.toFixed(d));
   if (!idx) throw new Error('No Nifty 5-minute data');
   const idxDays = byDay(idx);
   const days = Object.keys(idxDays).sort().filter(d => idxDays[d].length >= 72);
-  const test = days.slice(-DAYS);
+  const from = arg('from'), to = arg('to');
+  const test = from || to ? days.filter(d => (!from || d >= from) && (!to || d <= to)) : days.slice(-DAYS);
   console.log(`Sessions with complete data: ${days.length}. Testing the last ${test.length}: ${test[0]} to ${test[test.length - 1]}\n`);
 
   const intraByDay = {};
@@ -345,7 +452,10 @@ const f = (v, d = 2) => (v == null || !isFinite(v) ? '-' : v.toFixed(d));
     for (const si of SECTOR_INDEXES) secBars[si] = (intraByDay[si] && intraByDay[si][day]) || [];
     const vd = (daily[base.vixSymbol] || []).filter(c => dayKey(c.t) < day);
     const vixPrev = vd.length ? vd[vd.length - 1].c : 0;
-    const ctx = { picked, bars, idxBars: idxDays[day], secBars, vixPrev, baseline };
+    const nd = (daily[base.indexSymbol] || []).filter(c => dayKey(c.t) < day).map(c => c.c);
+    const sma = n => (nd.length >= n ? nd.slice(-n).reduce((a, b) => a + b, 0) / n : null);
+    const regime = nd.length >= 50 ? { prevClose: nd[nd.length - 1], sma20: sma(20), sma50: sma(50) } : null;
+    const ctx = { picked, bars, idxBars: idxDays[day], secBars, vixPrev, baseline, regime };
     VARIANTS.forEach((V, i) => results[i].push(...simDay(day, V, ctx)));
   }
 
