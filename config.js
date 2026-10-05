@@ -91,6 +91,7 @@ module.exports = {
   newsWindowHours: 36,                      // only headlines newer than this are used
   geminiModel: 'gemini-3.1-flash-lite',
   // Momentum book: a separate paper-only monthly momentum portfolio (lib/momentum.js). Never touches the opening-range engine.
+  moversEnabled: (process.env.MODE || 'replay') === 'live', // mover scanner: a study that never trades (lib/movers.js)
   mbookEnabled: (process.env.MODE || 'replay') === 'live',
   mbookCapital: 50000,                      // paper capital, fixed when the book is first created
   mbookSlots: 10,                           // number of stocks held

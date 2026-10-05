@@ -142,6 +142,7 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     <button type="button" data-tab="trades">Trades <span class="cnt" id="tcClosed"></span></button>
     <button type="button" data-tab="strategy">Strategy</button>
     <button type="button" data-tab="momentum">Swing</button>
+    <button type="button" data-tab="movers">Movers</button>
     <button type="button" data-tab="activity">Activity</button>
     <a href="/settings">Settings</a>
   </nav>
@@ -187,6 +188,9 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     </div>
     <div class="panel" data-panel="momentum">
       <section class="card" id="cMom"><h2>Swing portfolio (paper only, holds for about a month)</h2><div id="mbook"><p class="empty">Loading...</p></div></section>
+    </div>
+    <div class="panel" data-panel="movers">
+      <section class="card" id="cMov"><h2>Mover scanner (study only, no trades)</h2><div id="movers"><p class="empty">Loading...</p></div></section>
     </div>
     <div class="panel" data-panel="activity">
       <section class="card" id="cLog"><h2>Activity</h2><ul class="act" id="log"></ul></section>
@@ -293,6 +297,35 @@ const openDetails=new Set();
 document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.tagName==='DETAILS'&&d.dataset&&d.dataset.k){if(d.open)openDetails.add(d.dataset.k);else openDetails.delete(d.dataset.k);}},true);
 function restoreOpen(){document.querySelectorAll('details[data-k]').forEach(d=>{if(openDetails.has(d.dataset.k)&&!d.open)d.open=true;});}
 let lastState=null;
+async function loadMovers(){
+  try{const r=await fetch('/api/movers',{cache:'no-store'});renderMovers(await r.json());}
+  catch(e){$('movers').innerHTML='<p class="empty">Could not load the mover scanner.</p>';}
+}
+const pc=(v,d=2)=>v==null||!isFinite(v)?'-':(v>=0?'+':'')+Number(v).toFixed(d)+'%';
+function renderMovers(m){
+  if(!m.enabled){$('movers').innerHTML='<p class="empty">The mover scanner is off (it runs in live mode only).</p>';return;}
+  if(m.loading){$('movers').innerHTML='<p class="empty">Starting...</p>';return;}
+  const T=m.today;
+  const intro='<p class="why">A study, not a strategy: it places no trades and does not touch the day-trading bot or the swing portfolio. Each trading morning, after 09:35, it lists Nifty 200 stocks that are 2% or more away from yesterday\'s close, with their early volume, and checks whether news published <b>before</b> 09:35 gives a real company-specific reason. After the close it records what each one did next. The question it answers: <b>do big opening moves with a real reason keep going by more than charges (about '+m.cost+'% for a round trip)?</b> Returns below are signed in the mover\'s own direction: plus means it kept going, minus means it faded.</p>';
+  let today='<p class="empty">No scan yet today. It runs from 09:38 on trading days.</p>';
+  if(T){
+    const hasOut=T.outcomes&&Object.keys(T.outcomes).length;
+    today='<div class="newsbox"><b>Scan for '+esc(T.day)+'</b> at '+tm(T.scannedAt)+': '+T.movers.length+' stocks 2% or more from yesterday\'s close ('+T.movers.filter(x=>x.strongVolume).length+' with strong early volume, '+T.movers.filter(x=>x.catalyst&&x.catalyst.explainsMove).length+' with a news reason). Nifty at 09:35: '+pc(T.niftyMovePct)+'.'+(T.error?' <b>News check: '+esc(T.error)+'</b>':'')+(T.model?' <span class="mut">('+esc(T.model)+')</span>':'')+'</div>'+
+    '<table class="mt"><tr><th>Stock</th><th>Move</th><th>Gap</th><th>Early volume</th><th>News reason</th><th>To 10:30</th><th>To 15:15</th><th>vs Nifty</th></tr>'+T.movers.map(x=>{
+      const c=x.catalyst,o=T.outcomes&&T.outcomes[x.sym];
+      const news=!c?'<span class="mut">not checked</span>':c.explainsMove===true?'<b>'+esc((c.category||'').replace(/_/g,' '))+'</b> ('+esc(c.sentiment)+')':c.explainsMove===false?'<span class="mut">none found</span>':'<span class="mut">unverified</span>';
+      const src=c&&c.sources&&c.sources.length&&c.explainsMove?'<div class="why">'+esc(c.reason)+'<br>'+srcLinks(c.sources)+'</div>':(c&&c.reason?'<div class="why">'+esc(c.reason)+'</div>':'');
+      return '<tr><td><b>'+esc(x.sym)+'</b></td><td class="'+cls(x.movePct)+'">'+pc(x.movePct,1)+'</td><td>'+pc(x.gapPct,1)+'</td><td>'+x.rvol.toFixed(1)+'x'+(x.strongVolume?' <span class="badge ok">strong</span>':'')+'</td><td>'+news+src+'</td><td class="'+(o?cls(o.r1030):'')+'">'+(o?pc(o.r1030):'<span class="mut">after close</span>')+'</td><td class="'+(o?cls(o.r1515):'')+'">'+(o?pc(o.r1515):'')+'</td><td>'+(o?pc(o.adj1515):'')+'</td></tr>';
+    }).join('')+'</table>'+(hasOut?'':'<p class="why">The "what happened next" columns fill in after 15:45.</p>');
+  }
+  let study='<p class="empty">The study table appears after the first day with recorded outcomes.</p>';
+  const S=m.study;
+  if(S&&S.rows){
+    study='<p class="why">'+S.rows+' movers over '+S.days+' trading day(s). "To 15:15" is the average return after 09:35, in the mover\'s direction. "After charges" subtracts about '+S.cost+'%. <b>Treat nothing as real until there are 30 or more days and the number is clearly above zero after charges.</b></p><table class="mt"><tr><th>Group</th><th>Movers</th><th>Days</th><th>To 10:30</th><th>To 15:15</th><th>Minus Nifty</th><th>Kept going</th><th>t (by day)</th><th>After charges</th></tr>'+S.groups.filter(g=>g.n).map(g=>'<tr><td>'+esc(g.name)+'</td><td>'+g.n+'</td><td>'+g.days+'</td><td class="'+cls(g.r1030)+'">'+pc(g.r1030)+'</td><td class="'+cls(g.r1515)+'">'+pc(g.r1515)+'</td><td>'+pc(g.adj1515)+'</td><td>'+g.win.toFixed(0)+'%</td><td>'+(g.t==null?'-':g.t.toFixed(1))+'</td><td class="'+cls(g.net)+'"><b>'+pc(g.net)+'</b></td></tr>').join('')+'</table>';
+  }
+  const ev=m.events&&m.events.length?'<ul class="act">'+m.events.slice(0,8).map(e=>'<li>'+esc(new Date(e.t).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:false}))+' '+esc(e.text)+'</li>').join('')+'</ul>':'';
+  $('movers').innerHTML=intro+'<h3 style="margin:12px 0 4px;font-size:.95rem">Today</h3>'+today+'<h3 style="margin:16px 0 4px;font-size:.95rem">What the study has found so far</h3>'+study+(ev?'<h3 style="margin:14px 0 4px;font-size:.95rem">Activity</h3>'+ev:'')+'<p class="why" style="margin-top:8px"><a href="/api/movers/scans.json">Every mover (JSON)</a> &middot; <a href="/api/movers/outcomes.json">Every outcome (JSON)</a></p>';
+}
 async function loadMbook(){
   try{const r=await fetch('/api/mbook',{cache:'no-store'});renderMbook(await r.json());}
   catch(e){$('mbook').innerHTML='<p class="empty">Could not load the swing portfolio.</p>';}
@@ -319,13 +352,14 @@ function renderMbook(m){
     '<h3 style="margin:14px 0 4px;font-size:.95rem">Holdings</h3>'+pos+picks+'<h3 style="margin:14px 0 4px;font-size:.95rem">Value over time</h3>'+mbCurve(m.curve)+
     '<h3 style="margin:14px 0 4px;font-size:.95rem">Trades</h3>'+tr+(ev?'<h3 style="margin:14px 0 4px;font-size:.95rem">Activity</h3>'+ev:'')+'<p class="why" style="margin-top:8px"><a href="/api/mbook/trades.json">Download every trade (JSON)</a></p>';
 }
-setInterval(()=>{const p=document.querySelector('.panel.on');if(p&&p.dataset.panel==='momentum')loadMbook();},30000);
+setInterval(()=>{const p=document.querySelector('.panel.on');if(p&&p.dataset.panel==='momentum')loadMbook();if(p&&p.dataset.panel==='movers')loadMovers();},30000);
 function showTab(t){
   if(!document.querySelector('[data-panel="'+t+'"]'))t='overview';
   document.querySelectorAll('[data-panel]').forEach(p=>p.classList.toggle('on',p.dataset.panel===t));
   document.querySelectorAll('#tabs [data-tab]').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   try{localStorage.setItem('pt_tab',t)}catch(e){}
   if(t==='momentum')loadMbook();
+  if(t==='movers')loadMovers();
   try{history.replaceState(null,'','#'+t)}catch(e){}
   if(lastState)render(lastState);
 }

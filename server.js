@@ -6,6 +6,7 @@ const { YahooProvider, DemoProvider, Clock } = require('./lib/data');
 const { Engine } = require('./lib/engine');
 const { toCsv, recordsToCsv } = require('./lib/stats');
 const { MomentumBook } = require('./lib/momentum');
+const { MoverScanner } = require('./lib/movers');
 const { atMinute, dayKey, OPEN, CLOSE } = require('./lib/time');
 
 const clock = new Clock(cfg.mode, cfg.speed);
@@ -39,9 +40,17 @@ if (mbook) {
     .catch(e => console.error('Momentum book failed to start:', e.message));
 }
 
+// Mover scanner: a study (never trades), own timer and storage keys. Errors stay inside it.
+const movers = cfg.moversEnabled ? new MoverScanner(cfg) : null;
+if (movers) {
+  movers.load().then(() => setInterval(() => { movers.tick().catch(e => console.error('Movers:', e.message)); }, 60000))
+    .catch(e => console.error('Mover scanner failed to start:', e.message));
+}
+
 // Render sends SIGTERM on every redeploy or restart: write everything out before exiting.
 for (const sig of ['SIGTERM', 'SIGINT']) {
   process.on(sig, async () => {
+    try { if (movers && movers.state) await movers.save(); } catch (e) { console.error('Movers shutdown save failed:', e.message); }
     try { if (mbook && mbook.state) await mbook.save(); } catch (e) { console.error('Momentum book shutdown save failed:', e.message); }
     try { await engine.flush(); await engine.save(); } catch (e) { console.error('Shutdown save failed:', e.message); }
     process.exit(0);
@@ -73,6 +82,12 @@ const server = http.createServer((req, res) => {
         res.end(ext === 'csv' ? recordsToCsv(list) : JSON.stringify(list));
       } catch (e) { send(res, 500, 'application/json', JSON.stringify({ error: e.message })); }
     })();
+    return;
+  }
+  if (url.pathname === '/api/movers') return send(res, 200, 'application/json', JSON.stringify(movers ? movers.snapshot() : { enabled: false }));
+  if (url.pathname === '/api/movers/scans.json' || url.pathname === '/api/movers/outcomes.json') {
+    if (!movers) return send(res, 404, 'application/json', '{"error":"mover scanner is off"}');
+    movers.store.list(url.pathname.includes('scans') ? 'scans' : 'outcomes').then(l => send(res, 200, 'application/json', JSON.stringify(l))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message })));
     return;
   }
   if (url.pathname === '/api/mbook') return send(res, 200, 'application/json', JSON.stringify(mbook ? mbook.snapshot() : { enabled: false }));

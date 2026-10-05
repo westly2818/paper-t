@@ -9,7 +9,7 @@
     "replay": "MODE=replay node server.js",
     "demo": "MODE=demo node server.js",
     "backtest": "node backtest.js",
-    "test": "node --test test/volume-ratio.test.js test/shadow.test.js test/breakout-features.test.js test/no-trading-day.test.js test/momentum.test.js test/daily-cache.test.js test/confidence.test.js",
+    "test": "node --test test/volume-ratio.test.js test/shadow.test.js test/breakout-features.test.js test/no-trading-day.test.js test/momentum.test.js test/daily-cache.test.js test/confidence.test.js test/movers.test.js",
     "lab": "node lab.js",
     "momentum-sim": "node --max-old-space-size=3000 momentum-sim.js --dir data/fyers-daily-10y"
   },
