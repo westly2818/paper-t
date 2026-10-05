@@ -51,6 +51,8 @@ const VARIANTS = [
   { name: 'V3 + gap under 1%', beR: 0.5, pass: s => known(s.gapPct) && Math.abs(s.gapPct) < 1 },
   { name: 'V3 fresh breakouts only (no 2nd/3rd attempt)', beR: 0.5, pass: s => known(s.crossedBefore) && s.crossedBefore === 0 },
   { name: 'V3 late breakouts only (study)', beR: 0.5, pass: s => known(s.crossedBefore) && s.crossedBefore > 0 },
+  { name: 'V3 + breakout volume >= 1.2x (2-year sweep candidate)', beR: 0.5, pass: s => known(s.volRatio) && s.volRatio >= 1.2 },
+  { name: 'V3 + confidence >= 85 (2-year sweep candidate)', beR: 0.5, pass: s => s.confidence != null && s.confidence.score >= 85 },
   { name: 'V4 candidate (RVOL slot>=1.0, cum>=0.7, BE +1R)', beR: 1, pass: s => known(s.rvolSlot) && s.rvolSlot >= 1.0 && known(s.rvolCum) && s.rvolCum >= 0.7 }
 ];
 

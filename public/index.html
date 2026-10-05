@@ -68,12 +68,13 @@ canvas{display:block;width:100%;height:180px;margin-top:10px}
 .chk{margin-top:6px}
 .ck{display:flex;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:.8rem}
 .ck:first-child{border-top:0}
-.ck i{font-style:normal;font-weight:800;width:18px;flex:none;text-align:center}
+.ck i{font-style:normal;font-weight:800;width:24px;flex:none;text-align:center}
 .ck.y i{color:var(--gain)}.ck.n i{color:var(--loss)}.ck.na i{color:var(--muted)}
 .ck .why{color:var(--muted);font-size:.75rem}
 details.dd{margin-top:8px;background:var(--soft);border-radius:8px;padding:6px 10px}
 details.dd summary{cursor:pointer;font-size:.8rem;font-weight:600}
 .badge{display:inline-block;border-radius:6px;padding:1px 7px;font-size:.72rem;font-weight:700}
+.badge.mid{background:var(--warn-bg);color:var(--warn)}
 .badge.ok{background:var(--gain-bg);color:var(--gain)}.badge.no{background:var(--loss-bg);color:var(--loss)}
 .rules ol{margin:6px 0 0;padding-left:20px;font-size:.84rem}.rules li{margin:5px 0}
 .rules .all{margin:4px 0 0;padding-left:18px}
@@ -244,6 +245,13 @@ function checksHtml(checks){
   if(!checks||!checks.length)return '<p class="empty">No checklist stored for this one.</p>';
   return '<div class="chk">'+checks.map(c=>`<div class="ck ${c.ok===true?'y':c.ok===false?'n':'na'}"><i>${c.ok===true?'\u2713':c.ok===false?'\u2717':'\u2013'}</i><div><b>${esc(c.label)}</b> <span class="mut">${esc(c.actual)} &middot; needs ${esc(c.required)}</span><div class="why">${esc(c.why)}</div></div></div>`).join('')+'</div>';
 }
+const CONF_LABELS={trend:'Daily trend matches the trade',relStrength:'Stronger (weaker) than Nifty, in the trade direction',volume:'Healthy volume (above the minimum, under 2x average)',nifty:'Nifty agrees',vwap:'Right side of VWAP',prevDay:"Beyond yesterday's high (low)",news:'News check clear',risk:'Normal-risk day'};
+const confCls=c=>c.label==='High'?'ok':c.label==='Medium'?'mid':'no';
+const confBadge=c=>c?'<span class="badge '+confCls(c)+'">Confidence '+c.score+'% &middot; '+esc(c.label)+'</span>':'';
+function confHtml(c){
+  return '<div class="chk">'+c.parts.map(p=>{const key=p.key||p.k,pts=p.points!=null?p.points:p.p,max=p.max!=null?p.max:p.m;const st=pts>=max?'y':pts>0?'na':'n';
+    return '<div class="ck '+st+'"><i>'+pts+'</i><div><b>'+esc(p.label||CONF_LABELS[key]||key)+'</b> <span class="mut">'+pts+' of '+max+' points</span>'+(p.why?'<div class="why">'+esc(p.why)+'</div>':'')+'</div></div>'}).join('')+'</div>';
+}
 function ctxHtml(c){
   if(!c)return '';
   const sc=c.setupScore;
@@ -257,6 +265,7 @@ function ctxHtml(c){
   if(c.volRatio!=null)rows.push(cell('Volume vs average',Number(c.volRatio).toFixed(2)+'x'));
   if(c.vwapDistPct!=null)rows.push(cell('Distance from VWAP',Number(c.vwapDistPct).toFixed(2)+'%'));
   if(c.relStrengthPct!=null)rows.push(cell('Vs Nifty (in trade direction)',(c.relStrengthPct>=0?'+':'')+Number(c.relStrengthPct).toFixed(2)+'%'));
+  if(c.confidence)rows.push(cell('Confidence at entry',c.confidence.score+'% ('+c.confidence.label+')'));
   if(sc)rows.push(cell('Setup score (study only)',sc.score+'/'+sc.max+' grade '+sc.grade));
   return '<div class="dg">'+rows.join('')+'</div>'+((c.stockWhy||(c.stock&&c.stock.why))?'<div class="why" style="margin-top:6px">Stock trend: '+esc(c.stockWhy||c.stock.why)+'</div>':'');
 }
@@ -360,7 +369,7 @@ function render(s){
     const buy=p.side==='long';
     return `<div class="pos"><div class="pr1"><div><b>${esc(p.sym)}</b> <span class="chip ${buy?'bull':'bear'}">${buy?'BUY (Long)':'SELL (Short)'}</span>${p.trailing?' <span class="chip win">Stop raised</span>':''}</div><div class="r ${cls(p.pnl)}"><b>${sgn(p.pnl,2)}</b><small>${p.pct>=0?'+':''}${p.pct.toFixed(2)}%</small></div></div><div class="rng" style="--e:${e}%;--x:${x}%"><i class="entry"></i><i class="dot ${cls(p.pnl)}"></i></div><div class="rl"><span>Stop ${inr(p.sl)}</span><span>Now ${inr(p.ltp)}</span><span>Target ${inr(p.tp)}</span></div>
       <div class="dg">${cell('Quantity',p.qty+' shares')}${cell(buy?'Buy price':'Sell price',inr(p.entry))}${cell('Amount invested',money(p.qty*p.entry,2))}${cell('Entered at',dt(p.t))}${cell('Current price',inr(p.ltp))}${cell('Current value',money(p.qty*p.ltp,2))}${cell('Charges so far',money(p.fee,2))}${cell('Max loss at stop',money(p.qty*Math.abs(p.entry-p.sl),2))}${cell('Profit at target',money(p.qty*Math.abs(p.tp-p.entry),2))}</div>
-      <div class="why" style="margin-top:6px">${p.ctx&&p.ctx.setupScore?`Setup score <b>${p.ctx.setupScore.score}/${p.ctx.setupScore.max}</b> (grade ${p.ctx.setupScore.grade}, for study only). `:''}Why entered: ${esc(p.reason||'')}</div>${p.ctx&&p.ctx.checks?`<details class="dd" data-k="pos-${esc(p.sym)}-${p.t}"><summary>Why this trade triggered: all ${p.ctx.checks.filter(c=>c.ok===true).length} applicable conditions were true</summary>${checksHtml(p.ctx.checks)}${ctxHtml(p.ctx)}</details>`:''}</div>`;
+      <div class="why" style="margin-top:6px">${p.ctx&&p.ctx.confidence?`Confidence at entry <b>${p.ctx.confidence.score}%</b> (${p.ctx.confidence.label}). `:''}${p.ctx&&p.ctx.setupScore?`Setup score <b>${p.ctx.setupScore.score}/${p.ctx.setupScore.max}</b> (grade ${p.ctx.setupScore.grade}, for study only). `:''}Why entered: ${esc(p.reason||'')}</div>${p.ctx&&p.ctx.checks?`<details class="dd" data-k="pos-${esc(p.sym)}-${p.t}"><summary>Why this trade triggered: all ${p.ctx.checks.filter(c=>c.ok===true).length} applicable conditions were true</summary>${checksHtml(p.ctx.checks)}${ctxHtml(p.ctx)}</details>`:''}</div>`;
   }).join(''):`<p class="empty">${s.phase==='trading'||s.phase==='opening-range'?'No open trades. Waiting for a valid breakout.':'No open trades.'}</p>`);
 
   const condChip=(label,v)=>`<span class="chip ${v===true?'win':v===false?'loss':''}">${label}${v===null?' n/a':v===true?' ✓':v===false?' ✗':''}</span>`;
@@ -374,7 +383,8 @@ function render(s){
         const head=`<div class="why" style="margin-top:6px"><b>${side==='long'?'Buy above':'Short below'} ${inr(l.trigger)}</b> &middot; stop ${inr(l.sl)} &middot; target ${inr(l.tp)}${l.qty?' &middot; qty '+l.qty+' &middot; risk '+money(legRisk(l))+' &middot; target profit '+money(l.qty*Math.abs(l.tp-l.trigger)):''}</div>`;
         const last=ev?`<details class="dd" data-k="last-${esc(st.sym)}-${side}"><summary><span class="badge ${ev.allOk?'ok':'no'}">${ev.allOk?'All conditions met':'Not triggered'}</span> Last closed 5-min candle (${tm(ev.at)}): ${ev.checks.filter(c=>c.ok===true).length} of ${ev.checks.length} true${ev.failed.length?'. Blocked by: '+esc(ev.failed.join(', ')):''}</summary>${checksHtml(ev.checks)}</details>`:'<div class="why">No closed candle checked yet since the range formed.</div>';
         const now=`<details class="dd" data-k="now-${esc(st.sym)}-${side}"><summary>Right now at the live price: ${l.checks.filter(c=>c.ok===true).length} of ${l.checks.length} true${l.checks.some(c=>c.ok===false)?'. Not met: '+esc(l.checks.filter(c=>c.ok===false).map(c=>c.label).join(', ')):'. All met (the bot still waits for the candle to close)'}</summary>${checksHtml(l.checks)}</details>`;
-        return head+last+now;
+        const confRow=l.confidence?'<details class="dd" data-k="conf-'+esc(st.sym)+'-'+side+'"><summary>'+confBadge(l.confidence)+' <span class="mut">'+(l.readiness?l.readiness.met+' of '+l.readiness.total+' entry conditions met now':'')+(ev&&ev.confidence?' &middot; at the last closed candle: '+ev.confidence.score+'%':'')+'</span></summary>'+confHtml(l.confidence)+'<div class="why">A checklist score of how many good signs line up for this setup, not a probability of profit. The weights are a first guess and it never blocks a trade; the value is saved with every trade so it can be checked against real results later.</div></details>':'';
+        return head+confRow+last+now;
       }).join('');
       if(!legsHtml)return '';
       return `<div class="stock"><div class="sh"><b>${esc(st.sym)}</b><span class="chip ${st.status}">${st.status}</span></div><div class="why">LTP <b>${st.ltp?inr(st.ltp):'-'}</b> VWAP <b>${st.vwap?inr(st.vwap):'-'}</b></div>${legsHtml}${blocks(plan)?'<div class="why" style="margin-top:6px"><b>Recent blocks</b></div>'+blocks(plan):''}</div>`;
