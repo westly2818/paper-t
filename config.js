@@ -6,7 +6,7 @@ module.exports = {
   // live   = real prices right now (only trades 9:15-15:30 IST on market days)
   // replay = re-plays a real, recent trading day (works any time, even weekends)
   // demo   = made-up prices, needs no internet (for testing)
-  strategyVersion: process.env.STRATEGY_VERSION || '3', // bump when you change rules, so later analysis can compare versions
+  strategyVersion: process.env.STRATEGY_VERSION || '3.1', // bump when you change rules, so later analysis can compare versions
   mode: process.env.MODE || 'replay',
   replayDay: process.env.DAY || null,      // YYYY-MM-DD, must be within the last ~7 days. Default: latest full session
   speed: num('SPEED', 60),                 // replay speed: 60 = one market minute per real second
@@ -49,7 +49,7 @@ module.exports = {
   indexSymbol: '^NSEI',                    // Nifty 50, used as a market filter
   shortlistSize: num('SHORTLIST', 6),
   backupPoolSize: num('BACKUPS', 15),       // deep bench to replace a stock whose setup dies with no trade
-  replaceUntilMin: hm('REPLACE_UNTIL', 10 * 60), // no backup is tried for a dead slot after this time (HH:MM IST); equal to lastEntryMin, a later backup can never enter
+  replaceUntilMin: hm('REPLACE_UNTIL', 10 * 60 + 30), // no backup is tried for a dead slot after this time (HH:MM IST); equal to lastEntryMin, a later backup can never enter
   replaceCandidates: num('REPLACE_CANDIDATES', 3), // backups queued per dead slot, all checked with one pasted reply
   minAtrPct: 1.0,                          // need enough daily movement to be worth trading
   maxAtrPct: 4.5,
@@ -63,7 +63,7 @@ module.exports = {
   minVolRatio: num('MIN_VOL_RATIO', 0.9),                        // breakout candle volume vs the average of today's closed 5-min candles so far (opening-range candles and the breakout candle included)
   maxChasePct: 0.4,                        // do not buy if price already ran this far past the trigger
   useIndexFilter: process.env.INDEX_FILTER !== '0',
-  lastEntryMin: hm('LAST_ENTRY', 10 * 60),                    // frozen rule: no new trades after 10:00 (was 14:30; only the 9:30-10:00 window showed a positive edge in the 59-session test)
+  lastEntryMin: hm('LAST_ENTRY', 10 * 60 + 30),               // version 3.1: no new trades after 10:30 (version 3 was 10:00, version 2 was 14:30)
   squareOffMin: hm('SQUARE_OFF', 15 * 60 + 15),              // everything closed by 15:15
 
   // ---- risk ----

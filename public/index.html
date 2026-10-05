@@ -369,6 +369,7 @@ function render(s){
     let nb='';
     if(nw){
       if(nw.status==='ok')nb=newsOkHtml(nw);
+      else if(nw.status==='auto-pending')nb='<div class="newsbox">The automatic news check runs once the market opens at 9:15. On a holiday it never runs.</div>';
       else if(nw.status==='skipped')nb='<div class="newsbox">News check skipped for today.</div>';
       else nb='<div class="newsbox">News check is off. Set NEWS_GUARD=1 (on by default in live mode) to turn it on.</div>';
     }

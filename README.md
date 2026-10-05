@@ -40,7 +40,7 @@ Prints win rate, average win/loss, average R, expectancy, profit factor, longest
 1. Morning plan: reads daily candles for the watchlist, scores trend (20/50-day averages, RSI), daily range and liquidity, and shortlists the best stocks your capital can hold.
 2. First 15 minutes: records the opening range (high and low).
 3. Trade plan: writes exact trigger, stop, target and quantity for each stock.
-4. Entries (9:30 to 10:00 am only, `LAST_ENTRY`; frozen as strategy version 3): needs a 5-minute close beyond the range, correct side of VWAP, non-weak volume, Nifty agreeing, and no chasing.
+4. Entries (9:30 to 10:30 am only, `LAST_ENTRY`; strategy version 3.1, version 3 stopped at 10:00): needs a 5-minute close beyond the range, correct side of VWAP, non-weak volume, Nifty agreeing, and no chasing.
 5. Exits: stop loss, 2R target, stop to breakeven at +0.5R, then at +1.5R the stop trails 1R behind the best price, 3:15 pm square-off, and a 3% daily loss limit.
 
 ## Things to know
@@ -59,7 +59,7 @@ In live mode with Upstash Redis (or a local `data/` folder) the bot keeps, separ
 Download: `/api/export/trades.csv`, `/api/export/trades.json`, `/api/export/days.json`, `/api/export/candles.json?day=YYYY-MM-DD`. Set `STRATEGY_VERSION` when you change rules, so results can be compared per version. If the server crashes at the wrong moment a trade can be logged twice; dedupe on `day` + `id`.
 
 ## Backup stocks
-When a picked stock's setup dies with no trade, the bot tries backups. Each backup is first checked against today's prices and skipped if its setup is already dead. No backup is tried after `REPLACE_UNTIL` (default `10:00` IST, same as the last entry time: a backup added later could never enter). Backups per slot: `REPLACE_CANDIDATES` (default 3).
+When a picked stock's setup dies with no trade, the bot tries backups. Each backup is first checked against today's prices and skipped if its setup is already dead. No backup is tried after `REPLACE_UNTIL` (default `10:30` IST, same as the last entry time: a backup added later could never enter). Backups per slot: `REPLACE_CANDIDATES` (default 3).
 
 ## Restarts
 In live mode the full state (open positions with their stops and entry context, plans, news verdicts, pending backups, journal) is saved after every poll and on shutdown (SIGTERM). After a restart the bot reloads it, re-fetches today's candles and catches up on any stop or target hit while it was down.
