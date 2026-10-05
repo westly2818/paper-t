@@ -62,6 +62,9 @@ canvas{display:block;width:100%;height:180px;margin-top:10px}
 .dg{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px 12px;margin-top:8px;font-size:.78rem}
 .dg span{display:block;color:var(--muted);font-weight:600;font-size:.7rem}
 .dg b{font-size:.84rem}
+.mt{width:100%;border-collapse:collapse;font-size:.78rem;margin-top:6px}
+.mt th,.mt td{text-align:left;padding:5px 6px;border-top:1px solid var(--line)}
+.mt th{color:var(--muted);font-weight:600}
 .chk{margin-top:6px}
 .ck{display:flex;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:.8rem}
 .ck:first-child{border-top:0}
@@ -137,6 +140,7 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     <button type="button" data-tab="plan">Today's plan</button>
     <button type="button" data-tab="trades">Trades <span class="cnt" id="tcClosed"></span></button>
     <button type="button" data-tab="strategy">Strategy</button>
+    <button type="button" data-tab="momentum">Momentum</button>
     <button type="button" data-tab="activity">Activity</button>
     <a href="/settings">Settings</a>
   </nav>
@@ -179,6 +183,9 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     </div>
     <div class="panel" data-panel="strategy">
       <section class="card" id="cRules"><h2>Live strategy</h2><div id="rules" class="rules"></div></section>
+    </div>
+    <div class="panel" data-panel="momentum">
+      <section class="card" id="cMom"><h2>Momentum book (paper only)</h2><div id="mbook"><p class="empty">Loading...</p></div></section>
     </div>
     <div class="panel" data-panel="activity">
       <section class="card" id="cLog"><h2>Activity</h2><ul class="act" id="log"></ul></section>
@@ -277,11 +284,39 @@ const openDetails=new Set();
 document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.tagName==='DETAILS'&&d.dataset&&d.dataset.k){if(d.open)openDetails.add(d.dataset.k);else openDetails.delete(d.dataset.k);}},true);
 function restoreOpen(){document.querySelectorAll('details[data-k]').forEach(d=>{if(openDetails.has(d.dataset.k)&&!d.open)d.open=true;});}
 let lastState=null;
+async function loadMbook(){
+  try{const r=await fetch('/api/mbook',{cache:'no-store'});renderMbook(await r.json());}
+  catch(e){$('mbook').innerHTML='<p class="empty">Could not load the momentum book.</p>';}
+}
+function mbCurve(c){
+  if(!c||c.length<2)return '<p class="empty">The value curve appears after the first evening update.</p>';
+  const w=600,hh=90,v=c.map(p=>p.eq),n=c.map(p=>p.nifty),mn=Math.min(...v),mx=Math.max(...v);
+  const norm=a=>{const lo=Math.min(...a),hi=Math.max(...a);return a.map(x=>hi===lo?0.5:(x-lo)/(hi-lo))};
+  const line=(a,col)=>'<polyline fill="none" stroke="'+col+'" stroke-width="2" points="'+norm(a).map((y,i)=>(i/(a.length-1)*w).toFixed(1)+','+(hh-6-y*(hh-12)).toFixed(1)).join(' ')+'"/>';
+  return '<svg viewBox="0 0 '+w+' '+hh+'" style="width:100%;height:90px">'+line(n,'#93A0B5')+line(v,'var(--accent)')+'</svg><div class="why">Blue: this book, grey: Nifty (both scaled to fit). '+c.length+' day(s) recorded.</div>';
+}
+function renderMbook(m){
+  if(!m.enabled){$('mbook').innerHTML='<p class="empty">The momentum book is off (it runs in live mode only).</p>';return;}
+  if(m.loading){$('mbook').innerHTML='<p class="empty">Starting...</p>';return;}
+  const pv=m.preview;
+  const regime=pv?'<div class="newsbox"><b>Market switch: '+(pv.regimeOn?'ON (the book may hold stocks)':'OFF (the book holds cash)')+'</b>. As of '+esc(pv.asOf)+', Nifty closed at '+inr(pv.niftyClose,0)+' against its 200-day average of '+(pv.sma200?inr(pv.sma200,0):'-')+'. Next rebalance: '+esc(m.nextRebalance)+'.</div>':'<div class="newsbox">The first evening update (after 15:50) prepares the pick list. Next rebalance: '+esc(m.nextRebalance)+'.</div>';
+  const tiles=[['Value',money(m.equity,0)],['Profit and loss','<b class="'+cls(m.pnl)+'">'+sgn(m.pnl,0)+' ('+(m.pnlPct>=0?'+':'')+m.pnlPct.toFixed(1)+'%)</b>'],['Cash',money(m.cash,0)],['Nifty since start',m.niftyPct==null?'-':(m.niftyPct>=0?'+':'')+m.niftyPct.toFixed(1)+'%'],['Started',m.startDay||'not yet'],['Paper capital',money(m.startCapital,0)+' / '+m.slots+' stocks']];
+  const pos=m.positions.length?'<table class="mt"><tr><th>#</th><th>Stock</th><th>Qty</th><th>Bought at</th><th>Now</th><th>Value</th><th>P&L</th><th>Since</th></tr>'+m.positions.map(p=>'<tr><td>'+p.rank+'</td><td><b>'+esc(p.sym)+'</b></td><td>'+p.qty+'</td><td>'+inr(p.entry)+'</td><td>'+inr(p.last)+'</td><td>'+money(p.value,0)+'</td><td class="'+cls(p.pnl)+'">'+sgn(p.pnl,0)+' ('+(p.pnlPct>=0?'+':'')+p.pnlPct.toFixed(1)+'%)</td><td>'+esc(p.entryDay)+'</td></tr>').join('')+'</table>':'<p class="empty">No stocks held right now.'+(pv&&!pv.regimeOn?' The market switch is off, so the book waits in cash.':'')+'</p>';
+  const picks=pv&&pv.picks&&pv.picks.length?'<div class="why" style="margin-top:6px">'+(pv.regimeOn?'These are the stocks it would hold at the next rebalance':'The switch is off, so these would NOT be bought now. They are what it would buy if the switch turned on')+' (momentum = 12-month return skipping the last month):</div><div class="why">'+pv.picks.map((p,i)=>(i+1)+'. <b>'+esc(p.sym)+'</b> '+(p.mom*100).toFixed(0)+'%').join(' &middot; ')+'</div>':'';
+  const tr=m.recent.length?'<table class="mt"><tr><th>Date</th><th>Action</th><th>Stock</th><th>Qty</th><th>Price</th><th>Charges</th><th>Result</th><th>Why</th></tr>'+m.recent.map(t=>'<tr><td>'+esc(t.day)+'</td><td>'+esc(t.side)+'</td><td><b>'+esc(t.sym)+'</b></td><td>'+(t.qty||'')+'</td><td>'+(t.price?inr(t.price):'')+'</td><td>'+(t.fee!=null?inr(t.fee):'')+'</td><td class="'+cls(t.pnl||0)+'">'+(t.pnl!=null?sgn(t.pnl,0)+' ('+t.pnlPct.toFixed(1)+'%)':'')+'</td><td>'+esc(t.reason||'')+'</td></tr>').join('')+'</table>':'<p class="empty">No trades yet.</p>';
+  const ev=m.events.length?'<ul class="act">'+m.events.slice(0,10).map(e=>'<li>'+esc(new Date(e.t).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:false}))+' '+esc(e.text)+'</li>').join('')+'</ul>':'';
+  $('mbook').innerHTML='<p class="why">A separate paper portfolio, not connected to the opening-range bot. Once a month, on the first trading day at 10:30, it ranks the Nifty 200 by 12-month momentum (skipping the last month) and holds the top '+m.slots+' in equal amounts, but only while Nifty is above its 200-day average (otherwise cash). Delivery charges and 0.05% slippage included. It will look like the market with bigger swings; the back-test did not prove it beats simply holding the same stocks.</p>'+regime+
+    '<div class="stats" style="margin-top:10px">'+tiles.map(([k,v])=>'<div class="tile"><span>'+k+'</span><b>'+v+'</b></div>').join('')+'</div>'+
+    '<h3 style="margin:14px 0 4px;font-size:.95rem">Holdings</h3>'+pos+picks+'<h3 style="margin:14px 0 4px;font-size:.95rem">Value over time</h3>'+mbCurve(m.curve)+
+    '<h3 style="margin:14px 0 4px;font-size:.95rem">Trades</h3>'+tr+(ev?'<h3 style="margin:14px 0 4px;font-size:.95rem">Activity</h3>'+ev:'')+'<p class="why" style="margin-top:8px"><a href="/api/mbook/trades.json">Download every trade (JSON)</a></p>';
+}
+setInterval(()=>{const p=document.querySelector('.panel.on');if(p&&p.dataset.panel==='momentum')loadMbook();},30000);
 function showTab(t){
   if(!document.querySelector('[data-panel="'+t+'"]'))t='overview';
   document.querySelectorAll('[data-panel]').forEach(p=>p.classList.toggle('on',p.dataset.panel===t));
   document.querySelectorAll('#tabs [data-tab]').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   try{localStorage.setItem('pt_tab',t)}catch(e){}
+  if(t==='momentum')loadMbook();
   try{history.replaceState(null,'','#'+t)}catch(e){}
   if(lastState)render(lastState);
 }

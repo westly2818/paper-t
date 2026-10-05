@@ -5,6 +5,7 @@ const cfg = require('./config');
 const { YahooProvider, DemoProvider, Clock } = require('./lib/data');
 const { Engine } = require('./lib/engine');
 const { toCsv, recordsToCsv } = require('./lib/stats');
+const { MomentumBook } = require('./lib/momentum');
 const { atMinute, dayKey, OPEN, CLOSE } = require('./lib/time');
 
 const clock = new Clock(cfg.mode, cfg.speed);
@@ -31,9 +32,17 @@ setInterval(async () => {
   if (starting) await engine.poll();
 }, cfg.mode === 'live' ? 20000 : 1000);
 
+// Momentum book: separate paper portfolio on its own timer and storage keys. Errors stay inside it.
+const mbook = cfg.mbookEnabled ? new MomentumBook(cfg) : null;
+if (mbook) {
+  mbook.load().then(() => setInterval(() => { mbook.tick().catch(e => console.error('Momentum book:', e.message)); }, 60000))
+    .catch(e => console.error('Momentum book failed to start:', e.message));
+}
+
 // Render sends SIGTERM on every redeploy or restart: write everything out before exiting.
 for (const sig of ['SIGTERM', 'SIGINT']) {
   process.on(sig, async () => {
+    try { if (mbook && mbook.state) await mbook.save(); } catch (e) { console.error('Momentum book shutdown save failed:', e.message); }
     try { await engine.flush(); await engine.save(); } catch (e) { console.error('Shutdown save failed:', e.message); }
     process.exit(0);
   });
@@ -49,6 +58,10 @@ const server = http.createServer((req, res) => {
     const what = url.pathname.slice(12);
     (async () => {
       try {
+        if (what === 'bars5m.json') {
+          const b = await engine.readBlob('bars5m:' + (url.searchParams.get('day') || ''));
+          return b ? send(res, 200, 'application/json', JSON.stringify(b)) : send(res, 404, 'application/json', '{"error":"no universe archive for that day"}');
+        }
         if (what === 'candles.json') {
           const c = await engine.readCandles(url.searchParams.get('day') || '');
           return c ? send(res, 200, 'application/json', JSON.stringify(c)) : send(res, 404, 'application/json', '{"error":"no candles saved for that day"}');
@@ -60,6 +73,12 @@ const server = http.createServer((req, res) => {
         res.end(ext === 'csv' ? recordsToCsv(list) : JSON.stringify(list));
       } catch (e) { send(res, 500, 'application/json', JSON.stringify({ error: e.message })); }
     })();
+    return;
+  }
+  if (url.pathname === '/api/mbook') return send(res, 200, 'application/json', JSON.stringify(mbook ? mbook.snapshot() : { enabled: false }));
+  if (url.pathname === '/api/mbook/trades.json') {
+    if (!mbook) return send(res, 404, 'application/json', '{"error":"momentum book is off"}');
+    mbook.store.list('trades').then(l => send(res, 200, 'application/json', JSON.stringify(l))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message })));
     return;
   }
   if (url.pathname === '/api/settings' && req.method === 'GET') return send(res, 200, 'application/json', JSON.stringify(engine.settingsView()));

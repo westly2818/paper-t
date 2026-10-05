@@ -68,3 +68,18 @@ test('version 3.1: entries until 10:30 and backups until 10:30', () => {
   assert.strictEqual(base.replaceUntilMin, base.lastEntryMin);
   assert.strictEqual(String(base.strategyVersion), '3.1');
 });
+
+test('universe archive waits for the close, and never runs on a non-trading day', async () => {
+  const stored = { ...base, mode: 'live', upstashUrl: null, stateFile: '/tmp/x/state.json' };
+  const eng = new Engine(stored, {}, { now: () => 0 });
+  eng.S.day = '2026-10-05'; eng.S.tradingDay = true;
+  eng.S.now = at(2026, 10, 5, 12, 0);
+  await eng.archiveUniverse();
+  assert.strictEqual(eng.S.archiveTries, 0, 'not before 15:38');
+  eng.S.tradingDay = false; eng.S.now = at(2026, 10, 5, 16, 0);
+  await eng.archiveUniverse();
+  assert.strictEqual(eng.S.archiveTries, 0, 'not on a day the market never opened');
+  eng.S.tradingDay = true; eng.S.archiveTries = 3;
+  await eng.archiveUniverse();
+  assert.strictEqual(eng.S.archiveTries, 3, 'gives up after 3 failed tries');
+});

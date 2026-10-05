@@ -90,5 +90,10 @@ module.exports = {
   unverifiedPolicy: 'block',                // a stock the news check could not verify: 'block' (default, never assume safe) or 'allow'
   newsWindowHours: 36,                      // only headlines newer than this are used
   geminiModel: 'gemini-3.1-flash-lite',
+  // Momentum book: a separate paper-only monthly momentum portfolio (lib/momentum.js). Never touches the opening-range engine.
+  mbookEnabled: (process.env.MODE || 'replay') === 'live',
+  mbookCapital: 50000,                      // paper capital, fixed when the book is first created
+  mbookSlots: 10,                           // number of stocks held
+  mbookRebalanceMin: 10 * 60 + 30,          // monthly decision time, IST (any time up to 15:00 on the first trading day)
   newsRequired: process.env.NEWS_REQUIRED === '1'   // 1 = trading waits until the check is pasted in; the "Skip" button is hidden
 };
