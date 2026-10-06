@@ -369,7 +369,7 @@ function renderV5(v){
   if(v.loading){$('v5Panel').innerHTML='<p class="empty">Starting V5 Engine...</p>';return;}
   const tc=$('tcV5');if(tc)tc.textContent=v.openPositions&&v.openPositions.length?v.openPositions.length:'';
   const tiles=[
-    ['Capital',money(v.capital||20000,0)],
+    ['Capital',money(v.capital||50000,0)],
     ['Today Realized P&L','<b class="'+cls(v.realized||0)+'">'+sgn(v.realized||0,2)+'</b>'],
     ['Trades Today',(v.tradesToday||0)+' / 6 max'],
     ['Phase',(v.phase||'idle').toUpperCase()]

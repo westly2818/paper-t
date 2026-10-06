@@ -101,7 +101,7 @@ module.exports = {
 
   // ---- Momentum Strategy V5 ----
   v5Enabled: process.env.V5_ENABLED !== '0' && ((process.env.MODE || 'replay') === 'live' || process.env.V5_FORCE === '1'),
-  v5Capital: num('V5_CAPITAL', 20000),
+  v5Capital: num('V5_CAPITAL', 50000),
   v5MinScore: num('V5_MIN_SCORE', 70),
   v5Slots: num('V5_SLOTS', 6),
   v5MaxPositions: num('V5_MAX_POS', 3),
