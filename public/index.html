@@ -141,6 +141,7 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     <button type="button" data-tab="plan">Today's plan</button>
     <button type="button" data-tab="trades">Trades <span class="cnt" id="tcClosed"></span></button>
     <button type="button" data-tab="strategy">Strategy</button>
+    <button type="button" data-tab="v5">V5 Momentum <span class="cnt" id="tcV5"></span></button>
     <button type="button" data-tab="momentum">Swing</button>
     <button type="button" data-tab="movers">Movers</button>
     <button type="button" data-tab="activity">Activity</button>
@@ -185,6 +186,9 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     </div>
     <div class="panel" data-panel="strategy">
       <section class="card" id="cRules"><h2>Live strategy</h2><div id="rules" class="rules"></div></section>
+    </div>
+    <div class="panel" data-panel="v5">
+      <section class="card" id="cV5"><h2>Momentum Strategy V5 (Continuous Scoring & Setups A/B/C)</h2><div id="v5Panel"><p class="empty">Loading V5...</p></div></section>
     </div>
     <div class="panel" data-panel="momentum">
       <section class="card" id="cMom"><h2>Swing portfolio (paper only, holds for about a month)</h2><div id="mbook"><p class="empty">Loading...</p></div></section>
@@ -352,7 +356,66 @@ function renderMbook(m){
     '<h3 style="margin:14px 0 4px;font-size:.95rem">Holdings</h3>'+pos+picks+'<h3 style="margin:14px 0 4px;font-size:.95rem">Value over time</h3>'+mbCurve(m.curve)+
     '<h3 style="margin:14px 0 4px;font-size:.95rem">Trades</h3>'+tr+(ev?'<h3 style="margin:14px 0 4px;font-size:.95rem">Activity</h3>'+ev:'')+'<p class="why" style="margin-top:8px"><a href="/api/mbook/trades.json">Download every trade (JSON)</a></p>';
 }
-setInterval(()=>{const p=document.querySelector('.panel.on');if(p&&p.dataset.panel==='momentum')loadMbook();if(p&&p.dataset.panel==='movers')loadMovers();},30000);
+async function loadV5(){
+  try{
+    const r=await fetch('/api/v5',{cache:'no-store'});
+    renderV5(await r.json());
+  }catch(e){
+    $('v5Panel').innerHTML='<p class="empty">Could not load V5 engine data.</p>';
+  }
+}
+function renderV5(v){
+  if(!v||!v.enabled){$('v5Panel').innerHTML='<p class="empty">Momentum Strategy V5 is off (it runs in live mode or with V5_FORCE=1).</p>';return;}
+  if(v.loading){$('v5Panel').innerHTML='<p class="empty">Starting V5 Engine...</p>';return;}
+  const tc=$('tcV5');if(tc)tc.textContent=v.openPositions&&v.openPositions.length?v.openPositions.length:'';
+  const tiles=[
+    ['Capital',money(v.capital||20000,0)],
+    ['Today Realized P&L','<b class="'+cls(v.realized||0)+'">'+sgn(v.realized||0,2)+'</b>'],
+    ['Trades Today',(v.tradesToday||0)+' / 6 max'],
+    ['Phase',(v.phase||'idle').toUpperCase()]
+  ];
+  const posTable=v.openPositions&&v.openPositions.length?
+    '<table class="mt"><tr><th>Setup</th><th>Stock</th><th>Side</th><th>Qty</th><th>Entry</th><th>Stop (SL)</th><th>Target (1.5R)</th><th>Score</th></tr>'+
+    v.openPositions.map(p=>'<tr><td><span class="badge ok">Setup '+esc(p.setup)+'</span></td><td><b>'+esc(p.sym)+'</b></td><td><span class="chip '+(p.side==='BUY'?'bull':'bear')+'">'+p.side+'</span></td><td>'+p.qty+'</td><td>'+inr(p.entry)+'</td><td>'+inr(p.stop)+'</td><td>'+inr(p.target)+'</td><td><b>'+p.score+'/100</b></td></tr>').join('')+
+    '</table>':'<p class="empty">No open positions.</p>';
+
+  const top6Table=v.top6&&v.top6.length?
+    '<table class="mt"><tr><th>Stock</th><th>Pre-Score</th><th>Long Score</th><th>Short Score</th><th>Price</th><th>VWAP</th><th>RVOL</th><th>Trend (EMA9/21)</th></tr>'+
+    v.top6.map(s=>{
+      const sc=v.scores&&v.scores[s.sym];
+      const lScore=sc?sc.longScore:'-';
+      const sScore=sc?sc.shortScore:'-';
+      const lHi=sc&&sc.longScore>=70;
+      const sHi=sc&&sc.shortScore>=70;
+      return '<tr><td><b>'+esc(s.sym)+'</b><div class="why" style="margin:0">'+esc(s.name||'')+'</div></td>'+
+        '<td><b>'+s.preScore+'</b></td>'+
+        '<td>'+(lHi?'<span class="badge ok">'+lScore+'</span>':lScore)+'</td>'+
+        '<td>'+(sHi?'<span class="badge no">'+sScore+'</span>':sScore)+'</td>'+
+        '<td>'+(sc?inr(sc.c):inr(s.close))+'</td>'+
+        '<td>'+(sc?inr(sc.vw):'-')+'</td>'+
+        '<td>'+(sc?sc.rvol.toFixed(1)+'x':'-')+'</td>'+
+        '<td>'+(sc?inr(sc.e9)+' / '+inr(sc.e21):'-')+'</td></tr>';
+    }).join('')+'</table>':'<p class="empty">Waiting for pre-market ranking (runs before 09:15 on trading days)...</p>';
+
+  const tradesTable=v.closedTrades&&v.closedTrades.length?
+    '<table class="mt"><tr><th>Setup</th><th>Stock</th><th>Side</th><th>Entry</th><th>Exit</th><th>P&L</th><th>R-Multiple</th><th>Exit Reason</th><th>Score</th></tr>'+
+    v.closedTrades.map(t=>'<tr><td><span class="badge ok">Setup '+esc(t.setup)+'</span></td><td><b>'+esc(t.sym)+'</b></td><td><span class="chip '+(t.side==='BUY'?'bull':'bear')+'">'+t.side+'</span></td><td>'+inr(t.entry)+'</td><td>'+inr(t.exit)+'</td><td class="'+cls(t.netPnL)+'"><b>'+sgn(t.netPnL,2)+'</b></td><td>'+(t.r>=0?'+':'')+t.r.toFixed(2)+'R</td><td>'+esc(t.exitReason)+'</td><td>'+t.score+'</td></tr>').join('')+
+    '</table>':'<p class="empty">No closed trades yet.</p>';
+
+  const evList=v.events&&v.events.length?
+    '<ul class="act">'+v.events.slice(0,15).map(e=>'<li>'+esc(new Date(e.t).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit'}))+' '+esc(e.text)+'</li>').join('')+'</ul>':'<p class="empty">No events logged yet.</p>';
+
+  const desc='<p class="why"><b>Momentum Strategy V5:</b> Continuous score-based daily momentum trading on the top 6 pre-market ranked Nifty 200 stocks. Trades when Live Momentum Score &ge; 70/100 across 3 windows: <b>Setup A</b> (09:30-10:30 Opening Breakout), <b>Setup B</b> (10:30-13:30 Pullback Continuation), and <b>Setup C</b> (13:30-14:45 Consolidation Breakout). Target: 1.5R. Clamped stops: 0.4% - 1.2%. Square off at 15:15 IST.</p>';
+
+  $('v5Panel').innerHTML=desc+
+    '<div class="stats" style="margin-top:10px">'+tiles.map(([k,val])=>'<div class="tile"><span>'+k+'</span><b>'+val+'</b></div>').join('')+'</div>'+
+    '<h3 style="margin:16px 0 4px;font-size:.95rem">Open Positions ('+(v.openPositions?v.openPositions.length:0)+')</h3>'+posTable+
+    '<h3 style="margin:16px 0 4px;font-size:.95rem">Top 6 Watchlist & Live Momentum Scores (Trigger &ge; 70)</h3>'+top6Table+
+    '<h3 style="margin:16px 0 4px;font-size:.95rem">Recent Closed Trades</h3>'+tradesTable+
+    '<h3 style="margin:16px 0 4px;font-size:.95rem">V5 Activity Log</h3>'+evList+
+    '<p class="why" style="margin-top:10px"><a href="/api/v5/trades.json" target="_blank">Download V5 Trade Journal (JSON)</a> &middot; <a href="/api/v5" target="_blank">Raw V5 State API</a></p>';
+}
+setInterval(()=>{const p=document.querySelector('.panel.on');if(p&&p.dataset.panel==='momentum')loadMbook();if(p&&p.dataset.panel==='movers')loadMovers();if(p&&p.dataset.panel==='v5')loadV5();},15000);
 function showTab(t){
   if(!document.querySelector('[data-panel="'+t+'"]'))t='overview';
   document.querySelectorAll('[data-panel]').forEach(p=>p.classList.toggle('on',p.dataset.panel===t));
@@ -360,6 +423,7 @@ function showTab(t){
   try{localStorage.setItem('pt_tab',t)}catch(e){}
   if(t==='momentum')loadMbook();
   if(t==='movers')loadMovers();
+  if(t==='v5')loadV5();
   try{history.replaceState(null,'','#'+t)}catch(e){}
   if(lastState)render(lastState);
 }
