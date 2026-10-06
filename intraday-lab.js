@@ -17,7 +17,7 @@ const base = require('./config');
 const { sessionsOf } = require('./lib/movers');
 
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
-const DIR = arg('dir', 'data/fyers-5m-long'), SPLIT = '2022-12-31', COST = 0.14, RR = 1.5, MINSTOP = 0.4, MAXSTOP = 1.2;
+const FROM = arg('from', '0000-00-00'), DIR = arg('dir', 'data/fyers-5m-long'), SPLIT = '2022-12-31', COST = 0.14, RR = 1.5, MINSTOP = 0.4, MAXSTOP = 1.2;
 const clamp01 = x => Math.max(0, Math.min(1, x));
 const mean = a => a.reduce((x, y) => x + y, 0) / (a.length || 1);
 
@@ -129,7 +129,8 @@ function processStock(sym, bars) {
 const files = fs.readdirSync(DIR).filter(f => f.endsWith('.csv') && !/^(NIFTY|INDIAVIX)\.csv$/.test(f));
 let n = 0;
 for (const f of files) { processStock(f.slice(0, -4), readBars(path.join(DIR, f))); if (++n % 25 === 0) process.stdout.write(`  ${n}/${files.length} stocks, ${rows.length} trades\r`); }
-fs.writeFileSync(path.join(__dirname, 'data', 'intraday-lab.json'), JSON.stringify(rows));
+if (FROM > '0000-00-00') { const keep = rows.filter(r => r.day >= FROM); rows.length = 0; rows.push(...keep); }   // history before --from is only used to warm up the volume baseline
+fs.writeFileSync(path.join(__dirname, 'data', 'intraday-lab' + (FROM > '0000-00-00' ? '-from-' + FROM : '') + '.json'), JSON.stringify(rows));
 
 function stat(a) {
   if (a.length < 5) return `n=${a.length}`;
