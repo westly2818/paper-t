@@ -52,7 +52,7 @@ for (let i = 0; i < cal.length; i++) {
   if (first == null) continue;
   let eq = book.cash;
   for (const p of book.positions) { const s = S[p.sym], x = s.idx.get(day); eq += p.qty * (x != null ? s.c[x] : p.entry); }
-  curve.push({ day, eq, nifty: N.c[i] });
+  curve.push({ day, eq, nifty: N.c[i], held: book.positions.map(p => p.sym).join(" ") });
 }
 const stats = (from, to) => {
   const c = curve.filter(p => p.day >= from && p.day <= to); if (c.length < 20) return 'n/a';
@@ -67,3 +67,14 @@ console.log('  development ' + stats(cal[first], DEV_END));
 console.log('  holdout     ' + stats('2023-01-01', cal[cal.length - 1]));
 console.log('  whole       ' + stats(cal[first], cal[cal.length - 1]));
 console.log('\n(swing-study.js M1, same data, re-buying every month: whole period 20.7%/yr with 33% drawdown; development 16.2%, holdout 27.2%.)');
+
+// monthly table for the last --months months: month-end value, change vs the month before, Nifty change, what was held
+const M = +arg('months', 0);
+if (M > 0) {
+  const ends = []; for (let k = 0; k < curve.length; k++) if (k === curve.length - 1 || curve[k].day.slice(0, 7) !== curve[k + 1].day.slice(0, 7)) ends.push(curve[k]);
+  console.log('\nMonth-end results:');
+  for (let k = Math.max(1, ends.length - M); k < ends.length; k++) {
+    const a = ends[k - 1], b = ends[k];
+    console.log(b.day.slice(0, 7) + '  value ' + b.eq.toFixed(0) + '  change ' + (b.eq - a.eq >= 0 ? '+' : '') + (b.eq - a.eq).toFixed(0) + ' (' + ((b.eq / a.eq - 1) * 100).toFixed(1) + '%)  Nifty ' + ((b.nifty / a.nifty - 1) * 100).toFixed(1) + '%  held: ' + (b.held || 'cash'));
+  }
+}

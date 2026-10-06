@@ -7,6 +7,7 @@ const { Engine } = require('./lib/engine');
 const { toCsv, recordsToCsv } = require('./lib/stats');
 const { MomentumBook } = require('./lib/momentum');
 const { MoverScanner } = require('./lib/movers');
+const { V5Engine } = require('./lib/v5-engine');
 const { atMinute, dayKey, OPEN, CLOSE } = require('./lib/time');
 
 const clock = new Clock(cfg.mode, cfg.speed);
@@ -47,9 +48,17 @@ if (movers) {
     .catch(e => console.error('Mover scanner failed to start:', e.message));
 }
 
+// Momentum Strategy V5: separate paper engine on its own timer and storage keys.
+const v5 = cfg.v5Enabled ? new V5Engine(cfg) : null;
+if (v5) {
+  v5.load().then(() => setInterval(() => { v5.tick().catch(e => console.error('V5 Engine:', e.message)); }, cfg.mode === 'live' ? 20000 : 5000))
+    .catch(e => console.error('V5 Engine failed to start:', e.message));
+}
+
 // Render sends SIGTERM on every redeploy or restart: write everything out before exiting.
 for (const sig of ['SIGTERM', 'SIGINT']) {
   process.on(sig, async () => {
+    try { if (v5 && v5.state) await v5.save(); } catch (e) { console.error('V5 shutdown save failed:', e.message); }
     try { if (movers && movers.state) await movers.save(); } catch (e) { console.error('Movers shutdown save failed:', e.message); }
     try { if (mbook && mbook.state) await mbook.save(); } catch (e) { console.error('Momentum book shutdown save failed:', e.message); }
     try { await engine.flush(); await engine.save(); } catch (e) { console.error('Shutdown save failed:', e.message); }
@@ -94,6 +103,12 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/mbook/trades.json') {
     if (!mbook) return send(res, 404, 'application/json', '{"error":"momentum book is off"}');
     mbook.store.list('trades').then(l => send(res, 200, 'application/json', JSON.stringify(l))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message })));
+    return;
+  }
+  if (url.pathname === '/api/v5') return send(res, 200, 'application/json', JSON.stringify(v5 ? v5.snapshot() : { enabled: false }));
+  if (url.pathname === '/api/v5/trades.json') {
+    if (!v5) return send(res, 404, 'application/json', '{"error":"v5 engine is off"}');
+    v5.store.list('trades').then(l => send(res, 200, 'application/json', JSON.stringify(l))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message })));
     return;
   }
   if (url.pathname === '/api/settings' && req.method === 'GET') return send(res, 200, 'application/json', JSON.stringify(engine.settingsView()));

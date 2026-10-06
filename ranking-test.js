@@ -32,7 +32,17 @@ fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive:
 const planner = require('./lib/planner');
 const realPick = planner.pickStocks;
 let seed = 424242; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
-planner.pickStocks = (infos, cfg, equity) => {
+const RSI_LO = +arg('rsilo', 0), RSI_HI = +arg('rsihi', 100), TREND_CAP = +arg('trendcap', 0);
+planner.pickStocks = (infos0, cfg, equity) => {
+  // optional pre-filters (study only): skip stretched stocks, cap how much the trend gap can add to the score
+  let infos = infos0;
+  if (RSI_LO > 0 || RSI_HI < 100 || TREND_CAP > 0) {
+    infos = infos0.filter(i => !((i.bias === 'bear' && i.rsi < RSI_LO) || (i.bias === 'bull' && i.rsi > RSI_HI))).map(i => {
+      if (!TREND_CAP) return i;
+      const tp = Math.abs(i.ema20 - i.ema50) / i.close * 100;
+      return { ...i, score: i.score - tp * 2 + Math.min(tp, TREND_CAP) * 2 };
+    });
+  }
   if (MODE === 'top') return realPick(infos, cfg, equity);
   const all = realPick(infos, { ...cfg, shortlistSize: 100000 }, equity);          // every eligible stock, ranked
   let ok = all.picked.slice();

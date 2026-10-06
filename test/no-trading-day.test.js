@@ -63,10 +63,10 @@ test('before the open, the automatic news call waits (the manual box is not show
   assert.strictEqual(eng.S.watch.news.status, 'auto-pending');
 });
 
-test('version 3.1: entries until 10:30 and backups until 10:30', () => {
+test('version 3.2: entries until 10:30 and backups until 10:30', () => {
   assert.strictEqual(base.lastEntryMin, 10 * 60 + 30);
   assert.strictEqual(base.replaceUntilMin, base.lastEntryMin);
-  assert.strictEqual(String(base.strategyVersion), '3.1');
+  assert.strictEqual(String(base.strategyVersion), '3.2');
 });
 
 test('universe archive waits for the close, and never runs on a non-trading day', async () => {
@@ -82,4 +82,20 @@ test('universe archive waits for the close, and never runs on a non-trading day'
   eng.S.tradingDay = true; eng.S.archiveTries = 3;
   await eng.archiveUniverse();
   assert.strictEqual(eng.S.archiveTries, 3, 'gives up after 3 failed tries');
+});
+
+test('balanced shortlist: half long candidates, half short candidates, even when the market is all downtrend', () => {
+  const { pickStocks } = require('../lib/planner');
+  const mk = (sym, bias, score, mom5) => ({ sym, bias, score, mom5, atrPct: 2, turnover: 1e10, close: 100 });
+  const infos = [];
+  for (let k = 0; k < 8; k++) infos.push(mk('B' + k, 'bear', 30 - k, -3));
+  for (let k = 0; k < 4; k++) infos.push(mk('U' + k, 'bull', 10 - k, 2));
+  for (let k = 0; k < 4; k++) infos.push(mk('N' + k, 'neutral', 1, k % 2 ? 1 : -1));
+  const cfg = { ...base, shortlistSize: 6, shortlistBase: 6, balancedShortlist: true };
+  const r = pickStocks(infos, cfg, 50000);
+  const picked = r.picked.map(i => i.sym);
+  assert.deepStrictEqual(picked.filter(s => s[0] === 'U' || s === 'N1' || s === 'N3').length >= 3, true);
+  assert.strictEqual(picked.filter(s => s[0] === 'B').length, 3);
+  const off = pickStocks(infos, { ...cfg, balancedShortlist: false }, 50000).picked.map(i => i.sym);
+  assert.deepStrictEqual(off, ['B0', 'B1', 'B2', 'B3', 'B4', 'B5']);
 });

@@ -1,3 +1,5 @@
+> **Start here: [docs/STUDY-GUIDE.md](docs/STUDY-GUIDE.md)** explains what we store, how to validate it after 30 or more days, and how to tell what is good. Keep it updated whenever something new is stored.
+
 # Paper Trader (NSE intraday, virtual money)
 
 Automated intraday practice trading. It plans stocks each morning, enters and exits on its own with stop loss, target and trailing stop, and squares everything off by 3:15 pm. No real orders are ever sent.

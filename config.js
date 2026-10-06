@@ -6,7 +6,7 @@ module.exports = {
   // live   = real prices right now (only trades 9:15-15:30 IST on market days)
   // replay = re-plays a real, recent trading day (works any time, even weekends)
   // demo   = made-up prices, needs no internet (for testing)
-  strategyVersion: process.env.STRATEGY_VERSION || '3.1', // bump when you change rules, so later analysis can compare versions
+  strategyVersion: process.env.STRATEGY_VERSION || '3.2', // bump when you change rules, so later analysis can compare versions
   mode: process.env.MODE || 'replay',
   replayDay: process.env.DAY || null,      // YYYY-MM-DD, must be within the last ~7 days. Default: latest full session
   speed: num('SPEED', 60),                 // replay speed: 60 = one market minute per real second
@@ -47,7 +47,8 @@ module.exports = {
     'VEDL','VMM','IDEA','VOLTAS','WAAREEENER','WIPRO','YESBANK','ZYDUSLIFE'
   ],
   indexSymbol: '^NSEI',                    // Nifty 50, used as a market filter
-  shortlistSize: num('SHORTLIST', 6),
+  shortlistSize: num('SHORTLIST', 12),
+  balancedShortlist: process.env.BALANCED_SHORTLIST !== '0', // half the shortlist from the best long candidates, half from the best short candidates (a market-wide downtrend then still shows longs)
   backupPoolSize: num('BACKUPS', 15),       // deep bench to replace a stock whose setup dies with no trade
   replaceUntilMin: hm('REPLACE_UNTIL', 10 * 60 + 30), // no backup is tried for a dead slot after this time (HH:MM IST); equal to lastEntryMin, a later backup can never enter
   replaceCandidates: num('REPLACE_CANDIDATES', 3), // backups queued per dead slot, all checked with one pasted reply
@@ -96,5 +97,14 @@ module.exports = {
   mbookCapital: 50000,                      // paper capital, fixed when the book is first created
   mbookSlots: 10,                           // number of stocks held
   mbookRebalanceMin: 10 * 60 + 30,          // monthly decision time, IST (any time up to 15:00 on the first trading day)
-  newsRequired: process.env.NEWS_REQUIRED === '1'   // 1 = trading waits until the check is pasted in; the "Skip" button is hidden
+  newsRequired: process.env.NEWS_REQUIRED === '1',  // 1 = trading waits until the check is pasted in; the "Skip" button is hidden
+
+  // ---- Momentum Strategy V5 ----
+  v5Enabled: process.env.V5_ENABLED !== '0' && ((process.env.MODE || 'replay') === 'live' || process.env.V5_FORCE === '1'),
+  v5Capital: num('V5_CAPITAL', 20000),
+  v5MinScore: num('V5_MIN_SCORE', 70),
+  v5Slots: num('V5_SLOTS', 6),
+  v5MaxPositions: num('V5_MAX_POS', 3),
+  v5MaxTrades: num('V5_MAX_TRADES', 6),
+  v5RR: num('V5_RR', 1.5)
 };

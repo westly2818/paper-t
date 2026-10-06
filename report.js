@@ -51,6 +51,15 @@ function report(label, trades, sessionsWithData) {
   console.log(`  2R target hit: ${hit2R}/${n} (${f1(hit2R / n * 100, 0)}%)   15:15 square-off exits: ${sq}/${n}`);
   console.log(`  Long : ${side('long')}`);
   console.log(`  Short: ${side('short')}`);
+  // Confidence score at entry (High 75+, Medium 50-74, Low under 50): does a higher score mean better trades?
+  const conf = trades.filter(t => t.ctx && t.ctx.confidence);
+  if (conf.length >= 5) {
+    console.log(`  By confidence at entry (${conf.length} trades have it):`);
+    for (const [name, lo, hi] of [['High (75 and above)', 75, 101], ['Medium (50 to 74)', 50, 75], ['Low (under 50)', 0, 50]]) {
+      const b = conf.filter(t => t.ctx.confidence.score >= lo && t.ctx.confidence.score < hi);
+      if (b.length) console.log(`    ${name.padEnd(22)} ${b.length} trades, ${f1(b.filter(t => t.net > 0).length / b.length * 100, 0)}% wins, ${f1(b.reduce((x, t) => x + t.rMultiple, 0) / b.length)}R avg, net ${f1(b.reduce((x, t) => x + t.net, 0), 0)}`);
+    }
+  }
 }
 
 (async () => {
