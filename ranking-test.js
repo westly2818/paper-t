@@ -25,6 +25,10 @@ for (let i = 0; i < process.argv.length; i++) {
   SETS[k] = v === 'true' ? true : v === 'false' ? false : hm ? +hm[1] * 60 + +hm[2] : !isNaN(+v) ? +v : v;
 }
 const MINCONF = +arg('minconf', 0);
+// extra entry gates from outside advice (study only): --roomtorun (no previous-day high/low between entry and the 2R target),
+// --stopmax P (skip, not clamp, when the stop is wider than P percent), --gap LO,HI (skip unless the opening gap is between LO and HI percent), --nifty50 (shortlist only Nifty 50 names)
+const ROOM = process.argv.includes('--roomtorun'), STOPMAX = +arg('stopmax', 0), GAP = (arg('gap', '') || '').split(',').map(Number), NIFTY50 = process.argv.includes('--nifty50');
+const N50 = new Set('RELIANCE TCS HDFCBANK BHARTIARTL ICICIBANK INFY SBIN ITC HINDUNILVR LT KOTAKBANK AXISBANK BAJFINANCE MARUTI SUNPHARMA M&M HCLTECH ULTRACEMCO TITAN NTPC ONGC ADANIPORTS ASIANPAINT BAJAJFINSV POWERGRID WIPRO NESTLEIND JSWSTEEL TATASTEEL COALINDIA TECHM HINDALCO GRASIM CIPLA DRREDDY EICHERMOT APOLLOHOSP SBILIFE HDFCLIFE BAJAJ-AUTO TATACONSUM BEL SHRIRAMFIN TRENT ADANIENT INDIGO JIOFIN MAXHEALTH ADANIPOWER'.split(' '));
 const OUT = path.join(__dirname, 'data', 'ranking-' + NAME);
 fs.rmSync(OUT, { recursive: true, force: true }); fs.mkdirSync(OUT, { recursive: true });
 
@@ -35,9 +39,9 @@ let seed = 424242; const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 
 const RSI_LO = +arg('rsilo', 0), RSI_HI = +arg('rsihi', 100), TREND_CAP = +arg('trendcap', 0);
 planner.pickStocks = (infos0, cfg, equity) => {
   // optional pre-filters (study only): skip stretched stocks, cap how much the trend gap can add to the score
-  let infos = infos0;
+  let infos = NIFTY50 ? infos0.filter(i => N50.has(i.sym)) : infos0;
   if (RSI_LO > 0 || RSI_HI < 100 || TREND_CAP > 0) {
-    infos = infos0.filter(i => !((i.bias === 'bear' && i.rsi < RSI_LO) || (i.bias === 'bull' && i.rsi > RSI_HI))).map(i => {
+    infos = infos.filter(i => !((i.bias === 'bear' && i.rsi < RSI_LO) || (i.bias === 'bull' && i.rsi > RSI_HI))).map(i => {
       if (!TREND_CAP) return i;
       const tp = Math.abs(i.ema20 - i.ema50) / i.close * 100;
       return { ...i, score: i.score - tp * 2 + Math.min(tp, TREND_CAP) * 2 };
@@ -55,9 +59,13 @@ planner.pickStocks = (infos0, cfg, equity) => {
 const base = require('./config');
 const { Clock } = require('./lib/data');
 const { Engine } = require('./lib/engine');
-if (MINCONF) {
+if (MINCONF || ROOM || STOPMAX || GAP.length === 2) {
   const realEnter = Engine.prototype.enter;
   Engine.prototype.enter = function (plan, leg, side, ref, startT, reason, ctx) {
+    const info = ((this.S.watch && this.S.watch.pool) || []).find(x => x.sym === plan.sym);
+    if (ROOM && info) { const wall = side === 'long' ? info.prevHigh > ref && info.prevHigh < leg.tp : info.prevLow < ref && info.prevLow > leg.tp; if (wall) { leg.note = 'Previous-day level sits inside the target distance'; return; } }
+    if (STOPMAX && Math.abs(ref - leg.sl) / ref * 100 > STOPMAX) { leg.note = 'Stop wider than ' + STOPMAX + '%'; return; }
+    if (GAP.length === 2 && (Math.abs(plan.gapPct) < GAP[0] || Math.abs(plan.gapPct) > GAP[1])) { leg.note = 'Gap outside ' + GAP.join('-') + '%'; return; }
     if (ctx && ctx.confidence && ctx.confidence.score < MINCONF) { leg.note = 'Confidence ' + ctx.confidence.score + ' is below ' + MINCONF; return; }
     return realEnter.apply(this, arguments);
   };

@@ -88,7 +88,7 @@ function processStock(sym, bars) {
       const taken = { A: false, B: false, C: false };
       const emit = (s, k, dir, stopRaw, rangePos) => {
         if (taken[s]) return; const t = runTrade(a, k, dir, stopRaw); if (!t) return; taken[s] = true;
-        rows.push({ s, day, y, sym, dir, score: scoreAt(ctx, k, dir, rangePos), ...t });
+        rows.push({ s, day, y, sym, dir, k, score: scoreAt(ctx, k, dir, rangePos), ...t });
       };
       const rangePosAt = (k, n) => { let hi = -1e18, lo = 1e18; for (let j = Math.max(0, k - n + 1); j <= k; j++) if (a[j]) { hi = Math.max(hi, a[j].h); lo = Math.min(lo, a[j].l); } return hi > lo ? (a[k].c - lo) / (hi - lo) : 0.5; };
       for (let k = 3; k <= 66; k++) {
