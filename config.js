@@ -6,7 +6,7 @@ module.exports = {
   // live   = real prices right now (only trades 9:15-15:30 IST on market days)
   // replay = re-plays a real, recent trading day (works any time, even weekends)
   // demo   = made-up prices, needs no internet (for testing)
-  strategyVersion: process.env.STRATEGY_VERSION || '3.2', // bump when you change rules, so later analysis can compare versions
+  strategyVersion: process.env.STRATEGY_VERSION || '3.3', // bump when you change rules, so later analysis can compare versions
   mode: process.env.MODE || 'replay',
   replayDay: process.env.DAY || null,      // YYYY-MM-DD, must be within the last ~7 days. Default: latest full session
   speed: num('SPEED', 60),                 // replay speed: 60 = one market minute per real second
@@ -80,6 +80,8 @@ module.exports = {
   slippagePct: 0.02,                       // assumed slippage on market-type fills
 
   // ---- market context ----
+  // version 3.3: Gemini's market call "elevated" no longer cuts size (126-session test: elevated days were no more volatile than normal days, and it fired on 83% of days). "high" still cuts to 50% with 2 positions; an unverified call still cuts to 75%. Set ELEVATED_MARKET_CUT=1 (or the Settings screen) to bring the old 75% cut back.
+  elevatedMarketCutsRisk: process.env.ELEVATED_MARKET_CUT === '1',
   vixSymbol: '^INDIAVIX', vixElevated: num('VIX_ELEVATED', 18), vixHigh: num('VIX_HIGH', 24), // risk is cut to 75% / 50%
   // Manual news screen: no API, no key. The dashboard shows a prompt to paste into ChatGPT (or
   // any AI) each morning; you paste its true/false reply back and the bot applies it. Live mode

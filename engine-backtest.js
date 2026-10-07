@@ -147,6 +147,7 @@ Every answer so far is cached in data/news-cache/gemini, so run the same command
     perDay.push({ day, trades: eng.S.closed.length, picked: eng.S.watch ? eng.S.watch.picked.map(p => p.sym) : [], pool: eng.S.watch ? (eng.S.watch.pool || []).map(p => p.sym) : [], avoided: eng.S.watch && eng.S.watch.news ? eng.S.watch.news.avoided || [] : [], unverified: eng.S.watch && eng.S.watch.news ? eng.S.watch.news.unverified || [] : [], initial: eng.S.watch && eng.S.watch.news && eng.S.watch.news.verdicts ? Object.keys(eng.S.watch.news.verdicts).length : 0, marketRisk: eng.S.watch && eng.S.watch.news ? eng.S.watch.news.market : null, err });
     if ((di + 1) % 25 === 0) console.log(`  ${di + 1}/${days.length} sessions, ${trades.length} trades so far (${Math.round((Date.now() - t0) / 1000)}s)`);
   }
+  fs.writeFileSync(path.join(__dirname, 'data', `engine-bt-${label}-days.json`), JSON.stringify(perDay.map(d => ({ day: d.day, trades: d.trades, marketRisk: d.marketRisk, avoided: d.avoided.length, unverified: d.unverified.length }))));
   if (!NEWS && !Object.keys(overrides).length) fs.writeFileSync(POOLS, JSON.stringify(Object.fromEntries(perDay.map(d => [d.day, d.pool]))));
   const errDays = perDay.filter(d => d.err);
   if (errDays.length) console.log(`\n${errDays.length} sessions ended with an engine message, first: ${errDays[0].day} ${errDays[0].err}`);
