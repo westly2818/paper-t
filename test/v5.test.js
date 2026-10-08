@@ -215,3 +215,17 @@ test('v5: square off at 15:15 exits remaining positions with reason "time"', () 
   assert.equal(engine.state.closed.length, 1);
   assert.equal(engine.state.closed[0].exitReason, 'time');
 });
+
+test('v5: no re-entry, a stock that already traded today is not entered again (even by another setup)', () => {
+  const engine = new V5Engine({ v5Capital: 50000, riskPct: 1 });
+  engine.state = engine.fresh('2026-10-08');
+  const now = Date.parse('2026-10-08T05:30:00Z');
+  const signal = { setup: 'A', dir: -1, rawStop: 101.0, why: 'Breakdown' };
+  const score = { score: 90, parts: {} };
+  assert.ok(engine.enterTrade('TEST', signal, { c: 100 }, score, now));
+  engine.managePositions({ TEST: 98.5 }, now + 60000, false);          // target: closed
+  assert.equal(engine.state.positions.length, 0);
+  assert.equal(engine.enterTrade('TEST', { ...signal, setup: 'B' }, { c: 98.4 }, score, now + 120000), null, 'same stock, same day: refused');
+  assert.ok(engine.enterTrade('OTHER', signal, { c: 100 }, score, now + 120000), 'another stock is still allowed');
+  assert.ok(engine.enterTrade('TEST', signal, { c: 100 }, score, now + 86400000 * 1), 'next day it can trade again');
+});
