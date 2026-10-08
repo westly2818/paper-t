@@ -24,6 +24,7 @@ function fakeUpstash(store) {
       else if (op === 'LINDEX') result = v[b] ?? null;
       else if (op === 'LRANGE') result = v.slice(b, c + 1);
       else if (op === 'GET') result = v ?? null;
+      else if (op === 'SET') { store.set(a, b); result = 'OK'; }
       else if (op === 'INFO') result = 'used_memory:1048576\r\nmaxmemory:67108864\r\n';
       res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ result }));
     });
@@ -49,6 +50,8 @@ test('incremental sync copies only what is new, never re-fetches archives, and r
     // ---- first sync: everything
     const s1 = await sync(base);
     assert.strictEqual(s1.listItems, 3); assert.strictEqual(s1.blobs, 1); assert.strictEqual(s1.kv, 1);
+    const marker = JSON.parse(store.get('paper-trader:backup:last'));
+    assert.strictEqual(marker.latestDay, '2026-10-06'); assert.strictEqual(marker.listItemsAdded, 3); assert.ok(Date.now() - Date.parse(marker.at) < 60000);
     const { client, db } = await connect(URI, dbName);
     let cov = await coverage(db);
     assert.strictEqual(cov.lists.find(l => l._id === 'paper-trader:state:trades').lastDay, '2026-10-06');

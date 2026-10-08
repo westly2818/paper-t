@@ -10,6 +10,7 @@ const { MoverScanner } = require('./lib/movers');
 const { V5Engine } = require('./lib/v5-engine');
 const { FnoBook } = require('./lib/fno');
 const { atMinute, dayKey, OPEN, CLOSE } = require('./lib/time');
+const dbhealth = require('./lib/dbhealth');
 
 const clock = new Clock(cfg.mode, cfg.speed);
 const provider = cfg.mode === 'demo' ? new DemoProvider(clock, cfg) : new YahooProvider(clock, cfg);
@@ -77,8 +78,21 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
 
 const send = (res, code, type, body) => { res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store' }); res.end(body); };
 
+// Data tab: is everything being saved to the database? The Redis facts are cached for 15 minutes (a manual re-check is allowed once a
+// minute) so the page can poll often; the "last saved" heartbeat is recomputed live on every request.
+const dbh = { facts: null, at: 0, busy: null };
+async function dbHealth(fresh) {
+  const age = Date.now() - dbh.at;
+  if (!dbh.facts && !dbh.busy || age > (fresh ? 60e3 : 15 * 60e3)) {
+    if (!dbh.busy) dbh.busy = dbhealth.collectFacts(engine).then(f => { dbh.facts = f; dbh.at = Date.now(); }).catch(e => { dbh.facts = { redis: { ok: false, error: e.message }, tradingDays: [], tradingDaysKnown: false, have: { dayRecord: new Set(), candles: new Set(), bars5m: new Set() }, logs: [], backup: null, collectedAt: Date.now() }; dbh.at = Date.now(); }).finally(() => { dbh.busy = null; });
+    await dbh.busy;
+  }
+  return dbhealth.view(dbh.facts, engine);
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
+  if (url.pathname === '/api/dbhealth') return dbHealth(url.searchParams.get('fresh') === '1').then(d => send(res, 200, 'application/json', JSON.stringify(d))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message })));
   if (url.pathname === '/api/state') return send(res, 200, 'application/json', JSON.stringify(engine.snapshot()));
   if (url.pathname === '/api/journal.csv') { res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="journal.csv"' }); return res.end(toCsv(engine.S.closed)); }
   if (url.pathname.startsWith('/api/export/')) {

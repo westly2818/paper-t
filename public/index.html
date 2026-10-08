@@ -18,6 +18,12 @@ h2{font-size:.95rem;margin:0 0 10px;font-weight:700}
 .clock{font-size:.8rem;color:var(--muted);font-weight:600}
 .pill{display:inline-block;padding:4px 11px;border-radius:999px;font-size:.8rem;font-weight:700;background:var(--soft);color:var(--muted);border:1px solid var(--line)}
 .pill.run{background:var(--gain-bg);color:var(--gain);border-color:transparent}
+.pill.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.pill[data-go]{cursor:pointer}
+.dbmsg{border-radius:10px;padding:9px 12px;font-size:.85rem;font-weight:600;margin-bottom:8px}
+.dbmsg.warn{background:var(--warn-bg);color:var(--warn)}.dbmsg.bad{background:var(--loss-bg);color:var(--loss)}
+.dbbar{height:10px;border-radius:6px;background:var(--soft);overflow:hidden;margin:6px 0}.dbbar>i{display:block;height:100%;background:var(--gain)}.dbbar>i.w{background:var(--warn)}.dbbar>i.b{background:var(--loss)}
+.dbk{display:inline-block;min-width:1.4em;text-align:center;font-weight:700}.dbk.ok{color:var(--gain)}.dbk.missing{color:var(--loss)}.dbk.pending{color:var(--warn)}.dbk.na{color:var(--muted)}
 .pill.halt{background:var(--loss-bg);color:var(--loss);border-color:transparent}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
 .grid{display:grid;gap:12px;grid-template-columns:minmax(0,1fr);margin-top:12px}
@@ -132,9 +138,10 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
 <div class="wrap">
   <header class="top">
     <div><h1>Paper Trader</h1><p class="sub" id="modeLine">Connecting...</p></div>
-    <div class="st"><span id="pill" class="pill">Starting</span><span id="clock" class="clock"></span></div>
+    <div class="st"><span id="dbPill" class="pill" data-go="data" title="Is everything being saved to the database? Click for details" hidden></span><span id="pill" class="pill">Starting</span><span id="clock" class="clock"></span></div>
   </header>
   <div id="err"></div>
+  <div id="dbBanner"></div>
   <div class="bar" id="ctl" hidden>
     <button id="bPause">Pause</button>
     <span class="lbl">Speed</span>
@@ -157,6 +164,7 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     <button type="button" data-tab="fno">F&amp;O <span class="cnt" id="tcFno"></span></button>
     <button type="button" data-tab="momentum">Swing</button>
     <button type="button" data-tab="movers">Movers</button>
+    <button type="button" data-tab="data">Data <span class="cnt" id="tcData"></span></button>
     <button type="button" data-tab="activity">Activity</button>
     <a href="/settings">Settings</a>
   </nav>
@@ -211,6 +219,9 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     </div>
     <div class="panel" data-panel="movers">
       <section class="card" id="cMov"><h2>Mover scanner (study only, no trades)</h2><div id="movers"><p class="empty">Loading...</p></div></section>
+    </div>
+    <div class="panel" data-panel="data">
+      <section class="card" id="cData"><h2>Data: is everything being saved?</h2><div id="dbBox"><p class="empty">Checking...</p></div></section>
     </div>
     <div class="panel" data-panel="activity">
       <section class="card" id="cLog"><h2>Activity</h2><ul class="act" id="log"></ul></section>
@@ -316,6 +327,46 @@ function renderRules(s){
 const openDetails=new Set();
 document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.tagName==='DETAILS'&&d.dataset&&d.dataset.k){if(d.open)openDetails.add(d.dataset.k);else openDetails.delete(d.dataset.k);}},true);
 function restoreOpen(){document.querySelectorAll('details[data-k]').forEach(d=>{if(openDetails.has(d.dataset.k)&&!d.open)d.open=true;});}
+// ---- Data tab: is everything being saved to the database, and is any trading day missing?
+let dbh=null;
+const istStamp=ms=>ms?new Date(ms).toLocaleString('en-GB',{timeZone:'Asia/Kolkata',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:false}):'-';
+const dbMark=v=>v==='ok'?'<span class="dbk ok" title="saved">&#10003;</span>':v==='missing'?'<span class="dbk missing" title="MISSING">&#10007;</span>':v==='pending'?'<span class="dbk pending" title="saved after the close">...</span>':'<span class="dbk na" title="not kept for this day">-</span>';
+async function loadDbHealth(fresh){
+  try{ const r=await fetch('/api/dbhealth'+(fresh?'?fresh=1':''),{cache:'no-store'}); dbh=await r.json(); }
+  catch(e){ dbh={enabled:true,status:'warn',headline:'Data: cannot check',messages:[{level:'warn',text:'Could not ask the server for the database status: '+e.message}],rows:[],logs:[]}; }
+  renderDbHealth();
+}
+function renderDbHealth(){
+  const d=dbh, pill=$('dbPill'), ban=$('dbBanner'), box=$('dbBox');
+  if(!d||d.enabled===false){ pill.hidden=true; ban.innerHTML=''; if(box)box.innerHTML='<p class="empty">'+esc((d&&d.reason)||'Not available.')+'</p>'; return; }
+  pill.hidden=false; pill.className='pill '+(d.status==='ok'?'run':d.status==='warn'?'warn':'halt'); pill.textContent=d.headline;
+  const bad=d.messages.filter(m=>m.level==='bad'), warn=d.messages.filter(m=>m.level==='warn');
+  $('tcData').textContent=d.messages.length||'';
+  // banner only when something needs attention
+  const onData=document.querySelector('[data-panel="data"]').classList.contains('on');
+  ban.innerHTML=(d.status==='ok'||onData)?'':(d.messages.slice().sort((a,b)=>(a.level==='bad'?0:1)-(b.level==='bad'?0:1)).slice(0,3).map(m=>'<div class="dbmsg '+m.level+'">'+esc(m.text)+'</div>').join('')+(d.messages.length>3?'<div class="dbmsg warn">+ '+(d.messages.length-3)+' more on the <a href="#data" onclick="showTab(\'data\');return false">Data tab</a></div>':'')+'');
+  if(!box)return;
+  const eg=d.engine||{}, rd=d.redis||{};
+  let h='';
+  h+=d.messages.length?d.messages.map(m=>'<div class="dbmsg '+m.level+'">'+esc(m.text)+'</div>').join(''):'<div class="dbmsg" style="background:var(--gain-bg);color:var(--gain)">Everything is being saved and no trading day is missing.</div>';
+  h+='<h3 style="margin:14px 0 6px;font-size:.95rem">Last saved to the database</h3><table class="mt"><tr><th>What</th><th>Last write</th><th>Note</th></tr>';
+  h+='<tr><td>Bot state (positions, plans, settings)</td><td><b>'+esc(eg.lastSaveText||'never')+'</b>'+(eg.lastSaveAt?' ('+esc(istStamp(eg.lastSaveAt))+' IST)':'')+'</td><td>'+(eg.lastSaveError?'<span style="color:var(--loss)">last error: '+esc(eg.lastSaveError)+'</span>':'saved about every minute')+'</td></tr>';
+  h+='<tr><td>Logs (trades, signals, day records)</td><td><b>'+esc(eg.lastFlushText||'nothing written since this server started')+'</b>'+(eg.lastFlushAt?' ('+esc(istStamp(eg.lastFlushAt))+' IST)':'')+'</td><td>'+(eg.outbox?'<span style="color:var(--warn)">'+eg.outbox+' waiting to be written</span>':'none waiting')+(eg.lastFlushError?' <span style="color:var(--loss)">last error: '+esc(eg.lastFlushError)+'</span>':'')+'</td></tr>';
+  h+='</table>';
+  h+='<h3 style="margin:14px 0 6px;font-size:.95rem">What the database holds</h3><table class="mt"><tr><th>Log</th><th>Items</th><th>Latest day</th><th>Latest record</th></tr>'+d.logs.map(l=>'<tr><td>'+esc(l.label)+'</td><td>'+l.items+'</td><td>'+esc(l.lastDay||'-')+'</td><td>'+(l.lastAt?esc(istStamp(l.lastAt))+' IST':'-')+'</td></tr>').join('')+'</table>';
+  h+='<h3 style="margin:14px 0 6px;font-size:.95rem">Every trading day, last 10 sessions</h3>';
+  h+=d.rows.length?'<table class="mt"><tr><th>Day</th><th>Day record</th><th>Day candles</th><th>5-minute archive (all stocks)</th></tr>'+d.rows.slice().reverse().map(r=>'<tr><td>'+esc(r.day)+(r.day===d.today?' (today)':'')+'</td><td>'+dbMark(r.dayRecord)+'</td><td>'+dbMark(r.candles)+'</td><td>'+dbMark(r.bars5m)+'</td></tr>').join('')+'</table><p class="why">&#10003; saved &nbsp; &#10007; missing &nbsp; ... saved after the close (checked again after 16:30) &nbsp; - not kept for that day</p>':'<p class="empty">No trading days found yet.</p>';
+  if(rd.ok&&rd.maxMb){
+    const pct=rd.usedMb/rd.maxMb*100, left=Math.floor((rd.maxMb-rd.usedMb)/0.43);
+    h+='<h3 style="margin:14px 0 6px;font-size:.95rem">Database space</h3><div class="dbbar"><i class="'+(pct>=90?'b':pct>=70?'w':'')+'" style="width:'+Math.max(1,Math.min(100,pct)).toFixed(1)+'%"></i></div><p class="why"><b>'+rd.usedMb.toFixed(2)+' MB</b> of '+rd.maxMb.toFixed(0)+' MB used ('+pct.toFixed(1)+'%). At about 0.43 MB per trading day it fills in roughly <b>'+left+' trading days</b> (about '+(left/21).toFixed(0)+' months). Back up and clear old price archives well before that.</p>';
+  }
+  h+='<h3 style="margin:14px 0 6px;font-size:.95rem">Backup to your own MongoDB</h3>';
+  h+=d.backup?'<p class="why">Last backup: <b>'+esc(d.backupText)+'</b> ('+esc(istStamp(d.backup.at))+' IST), data until <b>'+esc(d.backup.latestDay||'-')+'</b>; it added '+(d.backup.listItemsAdded||0)+' log items and '+(d.backup.blobsAdded||0)+' price archives.</p>':'<p class="why"><b>No backup recorded yet.</b></p>';
+  h+='<p class="why">To back up, run on your computer: <code>node --env-file=.env db-sync.js</code>. Aim for once a week.</p>';
+  h+='<p class="why">Checked '+esc(istStamp(d.checkedAt))+' IST. The database figures refresh every 15 minutes; <a href="#" onclick="loadDbHealth(true);return false">check now</a>.</p>';
+  box.innerHTML=h;
+}
+$('dbPill').onclick=()=>showTab('data');
 let lastState=null;
 async function loadMovers(){
   try{const r=await fetch('/api/movers',{cache:'no-store'});renderMovers(await r.json());}
@@ -473,8 +524,10 @@ function showTab(t){
   if(t==='movers')loadMovers();
   if(t==='v5')loadV5();
   if(t==='fno')loadFno();
+  if(t==='data')loadDbHealth(true);
   try{history.replaceState(null,'','#'+t)}catch(e){}
   if(lastState)render(lastState);
+  if(typeof dbh!=='undefined'&&dbh)renderDbHealth();
 }
 function initTabs(){
   document.querySelectorAll('#tabs [data-tab]').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
@@ -636,6 +689,7 @@ $('bRestart').onclick=()=>ctl('restart');
 document.querySelectorAll('[data-sp]').forEach(b=>b.onclick=()=>ctl('speed',+b.dataset.sp));
 addEventListener('resize',()=>last&&chart(last));
 tick();setInterval(tick,1500);
+loadDbHealth();setInterval(()=>loadDbHealth(false),60000);
 </script>
 </body>
 </html>

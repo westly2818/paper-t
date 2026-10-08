@@ -153,7 +153,9 @@ All commands run in the project folder. Add `--env-file=.env` so scripts can rea
 - Dashboard **Overview**: the status pill reads normal, no red error bar.
 - **Today's plan**: news box says "Automatic news check applied" (or paste manually).
 - After 15:50: **Swing** tab has a new day recorded; after 15:45: **Movers** tab outcomes filled in.
+- **Data pill** in the page header (next to the status pill): green "Data OK" means every trading day of the last 10 has its day record, day candles and 5-minute archive, the bot saved within the last few minutes, and the backup is recent. Amber or red: open the **Data** tab; it names the exact day and kind of data that is missing. After 16:30 a missing archive for today turns red.
 - Upstash dashboard, once a week: key count rising by about 4 to 6 per trading day, no storage warning.
+- Once a week: run `node --env-file=.env db-sync.js` (backs up to your MongoDB and records the time, which the Data tab shows; it turns amber after 7 days without a backup).
 
 ### 6.2 Every week
 - `node --env-file=.env report.js`: trades, win %, average R, profit factor, drawdown, long/short, hold time, per strategy version.

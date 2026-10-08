@@ -8,7 +8,7 @@
 //   node --env-file=.env db-sync.js --full          ignore what is stored and re-copy everything (rarely needed)
 // .env needs UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN (the same two values the Render service uses).
 // Optional: MONGODB_URI (default mongodb://127.0.0.1:27017) and MONGODB_DB (default paper_trader).
-// Nothing is ever deleted from Redis or from MongoDB. Needs the `mongodb` driver: run `npm install` once in this folder.
+// Nothing is ever deleted from Redis or from MongoDB. The only thing written to Redis is one small marker key, paper-trader:backup:last. Needs the `mongodb` driver: run `npm install` once in this folder.
 //
 // How "incremental" works, per kind of key:
 //   list (trades, days, signals, scans ...)  Redis lists only grow. MongoDB remembers how many items it has (n); the script
@@ -130,7 +130,14 @@ async function sync({ url, token, uri = 'mongodb://127.0.0.1:27017', dbName = 'p
 
     await db.collection('sync_log').insertOne({ started_at: startedAt, finished_at: new Date().toISOString(), keys_seen: stats.keys, list_items_added: stats.listItems, blobs_added: stats.blobs, kv_refreshed: stats.kv, redis_used_mb: usedMb, warnings: stats.warnings });
     log(`\nSync done: ${stats.keys} keys in Redis; added ${stats.listItems} list items, ${stats.blobs} new price archives, refreshed ${stats.kv} state keys${stats.warnings.length ? `; ${stats.warnings.length} warning(s) above` : ''}.`);
-    printCoverage(await coverage(db), `\nMongoDB ${dbName} now:`, log);
+    const now = await coverage(db);
+    printCoverage(now, `\nMongoDB ${dbName} now:`, log);
+    // One small marker key so the web app's Data tab can show when the last backup ran and how far it goes.
+    const days = [...now.lists.map(l => l.lastDay), ...now.blobs.map(b => b.lastDay)].filter(Boolean).sort();
+    try {
+      await call(['SET', 'paper-trader:backup:last', JSON.stringify({ at: new Date().toISOString(), latestDay: days[days.length - 1] || null, listItemsAdded: stats.listItems, blobsAdded: stats.blobs, kvRefreshed: stats.kv, warnings: stats.warnings, database: dbName })]);
+      log('Backup marker saved to Redis (the Data tab shows it).');
+    } catch (e) { log('Could not save the backup marker to Redis: ' + e.message); }
     return stats;
   } finally { await client.close(); }
 }
