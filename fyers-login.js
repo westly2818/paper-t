@@ -29,7 +29,16 @@ const server = http.createServer(async (req, res) => {
     fs.mkdirSync(path.join(__dirname, 'data'), { recursive: true });
     fs.writeFileSync(path.join(__dirname, 'data', 'fyers-token.json'), JSON.stringify({ appId, access_token: j.access_token, savedAt: new Date().toISOString() }));
     res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end('Fyers login done. You can close this tab.');
-    console.log('Token saved to data/fyers-token.json'); server.close(); process.exit(0);
+    console.log('Token saved to data/fyers-token.json');
+    // Also copy it to the database so the F&O book on Render can read prices (it expires about midnight, like the file). Skipped when no database is configured.
+    const { UPSTASH_REDIS_REST_URL: dbUrl, UPSTASH_REDIS_REST_TOKEN: dbToken } = process.env;
+    if (dbUrl && dbToken) {
+      try {
+        const w = await fetch(dbUrl, { method: 'POST', headers: { Authorization: 'Bearer ' + dbToken }, body: JSON.stringify(['SET', 'paper-trader:fyers:token', JSON.stringify({ appId, access_token: j.access_token, savedAt: new Date().toISOString() }), 'EX', 86400]) });
+        console.log((await w.json()).result === 'OK' ? 'Token also saved to the database for the F&O book (expires in 24 hours).' : 'Could not save the token to the database.');
+      } catch (e) { console.log('Could not save the token to the database:', e.message); }
+    }
+    server.close(); process.exit(0);
   } catch (e) { res.writeHead(500); res.end('Token request failed, see the terminal.'); console.error('Token request failed:', e.message); }
 });
 server.listen(+ru.port || 80, ru.hostname, () => {

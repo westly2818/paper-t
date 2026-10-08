@@ -8,6 +8,7 @@ const { toCsv, recordsToCsv } = require('./lib/stats');
 const { MomentumBook } = require('./lib/momentum');
 const { MoverScanner } = require('./lib/movers');
 const { V5Engine } = require('./lib/v5-engine');
+const { FnoBook } = require('./lib/fno');
 const { atMinute, dayKey, OPEN, CLOSE } = require('./lib/time');
 
 const clock = new Clock(cfg.mode, cfg.speed);
@@ -55,9 +56,17 @@ if (v5) {
     .catch(e => console.error('V5 Engine failed to start:', e.message));
 }
 
+// F&O paper book (weekly NIFTY iron condor + option chain log): own timer and storage keys.
+const fno = cfg.fnoEnabled ? new FnoBook(cfg) : null;
+if (fno) {
+  fno.load().then(() => setInterval(() => { fno.tick().catch(e => console.error('F&O book:', e.message)); }, 60000))
+    .catch(e => console.error('F&O book failed to start:', e.message));
+}
+
 // Render sends SIGTERM on every redeploy or restart: write everything out before exiting.
 for (const sig of ['SIGTERM', 'SIGINT']) {
   process.on(sig, async () => {
+    try { if (fno && fno.state) await fno.save(); } catch (e) { console.error('F&O shutdown save failed:', e.message); }
     try { if (v5 && v5.state) await v5.save(); } catch (e) { console.error('V5 shutdown save failed:', e.message); }
     try { if (movers && movers.state) await movers.save(); } catch (e) { console.error('Movers shutdown save failed:', e.message); }
     try { if (mbook && mbook.state) await mbook.save(); } catch (e) { console.error('Momentum book shutdown save failed:', e.message); }
@@ -105,6 +114,9 @@ const server = http.createServer((req, res) => {
     mbook.store.list('trades').then(l => send(res, 200, 'application/json', JSON.stringify(l))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message })));
     return;
   }
+  if (url.pathname === '/api/fno') return send(res, 200, 'application/json', JSON.stringify(fno ? fno.snapshot() : { enabled: false }));
+  if (url.pathname === '/api/fno/chain.json') { if (!fno) return send(res, 404, 'application/json', '{}'); return fno.store.list('chain').then(l => send(res, 200, 'application/json', JSON.stringify(l))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message }))); }
+  if (url.pathname === '/api/fno/trades.json') { if (!fno) return send(res, 404, 'application/json', '{}'); return fno.store.list('trades').then(l => send(res, 200, 'application/json', JSON.stringify(l))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message }))); }
   if (url.pathname === '/api/v5') return send(res, 200, 'application/json', JSON.stringify(v5 ? v5.snapshot() : { enabled: false }));
   if (url.pathname === '/api/v5/trades.json') {
     if (!v5) return send(res, 404, 'application/json', '{"error":"v5 engine is off"}');

@@ -154,6 +154,7 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     <button type="button" data-tab="trades">Trades <span class="cnt" id="tcClosed"></span></button>
     <button type="button" data-tab="strategy">Strategy</button>
     <button type="button" data-tab="v5">V5 Momentum <span class="cnt" id="tcV5"></span></button>
+    <button type="button" data-tab="fno">F&amp;O <span class="cnt" id="tcFno"></span></button>
     <button type="button" data-tab="momentum">Swing</button>
     <button type="button" data-tab="movers">Movers</button>
     <button type="button" data-tab="activity">Activity</button>
@@ -201,6 +202,9 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     </div>
     <div class="panel" data-panel="v5">
       <section class="card" id="cV5"><h2>Momentum Strategy V5 (Continuous Scoring & Setups A/B/C)</h2><div id="v5Panel"><p class="empty">Loading V5...</p></div></section>
+    </div>
+    <div class="panel" data-panel="fno">
+      <section class="card" id="cFno"><h2>F&amp;O paper book: weekly NIFTY iron condor</h2><div id="fnoPanel"><p class="empty">Loading F&amp;O...</p></div></section>
     </div>
     <div class="panel" data-panel="momentum">
       <section class="card" id="cMom"><h2>Swing portfolio (paper only, holds for about a month)</h2><div id="mbook"><p class="empty">Loading...</p></div></section>
@@ -368,6 +372,38 @@ function renderMbook(m){
     '<h3 style="margin:14px 0 4px;font-size:.95rem">Holdings</h3>'+pos+picks+'<h3 style="margin:14px 0 4px;font-size:.95rem">Value over time</h3>'+mbCurve(m.curve)+
     '<h3 style="margin:14px 0 4px;font-size:.95rem">Trades</h3>'+tr+(ev?'<h3 style="margin:14px 0 4px;font-size:.95rem">Activity</h3>'+ev:'')+'<p class="why" style="margin-top:8px"><a href="/api/mbook/trades.json">Download every trade (JSON)</a></p>';
 }
+async function loadFno(){
+  try{ const r=await fetch('/api/fno',{cache:'no-store'}); renderFno(await r.json()); }
+  catch(e){ $('fnoPanel').innerHTML='<p class="empty">Could not load F&amp;O data.</p>'; }
+}
+function renderFno(f){
+  if(!f||!f.enabled){$('fnoPanel').innerHTML='<p class="empty">The F&amp;O book is off (it runs in live mode or with FNO_FORCE=1).</p>';return;}
+  if(f.loading){$('fnoPanel').innerHTML='<p class="empty">Starting the F&amp;O book...</p>';return;}
+  const st=f.status||{}, p=f.position;
+  const tc=$('tcFno'); if(tc)tc.textContent=p?'1':'';
+  const kv=(k,val,c,wide)=>'<div class="v5kv'+(wide?' wide':'')+'"><span>'+k+'</span><b'+(c?' class="'+c+'"':'')+'>'+val+'</b></div>';
+  const tokenNote=st.token==='ok'||st.token==null?'':'<p class="why" style="color:var(--loss)"><b>'+esc(st.note||'No Fyers token.')+'</b> Run <code>node --env-file=.env fyers-login.js</code> on your PC each morning: it also sends the token here.</p>';
+  const tiles=[['Capital',money(f.capital||0,0)],['NIFTY',st.spot?inr(st.spot):'-'],['India VIX',st.vix?Number(st.vix).toFixed(2):'-'],['Next expiry',st.expiry?esc(st.expiry)+' ('+st.daysToExpiry+' d)':'-']];
+  let posHtml='<p class="empty">No open condor. A new one is sold on the first day after expiry from 10:00, when the nearest expiry is 4 to 8 days away.</p>';
+  if(p){
+    const legs=p.legs.map(l=>'<div class="v5kv"><span>'+(l.sell?'SOLD ':'BOUGHT ')+l.type+' '+l.strike+'</span><b>'+inr(l.price)+'</b></div>').join('');
+    const pnl=p.mtm||0;
+    posHtml='<div class="v5grid"><div class="v5c"><div class="v5h"><span class="sym">Iron condor</span><span class="badge ok">'+esc(p.expiry)+'</span><span class="meta">'+p.lots+' lot(s) &middot; '+p.qty+' qty</span></div>'+
+      '<div class="v5kvs">'+legs+kv('Credit received',inr(p.credit)+' pts (&#8377;'+Math.round(p.credit*p.qty).toLocaleString('en-IN')+')')+kv('Cost to close now',p.cost==null?'-':inr(p.cost)+' pts')+
+      kv('Stop (loss of)',money(p.stopLoss,0),'loss')+kv('Worst case',money(p.worstLoss,0),'loss')+kv('Open P/L',sgn(pnl,0),cls(pnl),true)+'</div></div></div>';
+  }
+  const closed=f.closed&&f.closed.length?'<div class="v5grid">'+f.closed.map(c=>'<div class="v5c"><div class="v5h"><span class="sym">'+esc(c.expiry)+'</span><span class="meta">'+esc(c.day)+' to '+esc(c.exitDay)+'</span></div><div class="v5kvs">'+
+      kv('Credit',inr(c.credit)+' pts')+kv('Closed at',inr(c.cost)+' pts')+kv('Net P&amp;L',sgn(c.net,0),cls(c.net))+kv('Of worst case',(c.r>=0?'+':'')+c.r.toFixed(2))+kv('Exit',esc(c.reason),'',true)+'</div></div>').join('')+'</div>':'<p class="empty">No closed condors yet.</p>';
+  const skipped=f.skipped&&f.skipped.length?'<p class="why">Skipped weeks: '+f.skipped.map(s=>esc(s.expiry)+' ('+esc(s.why)+')').join('; ')+'</p>':'';
+  const ev=f.events&&f.events.length?'<ul class="act">'+f.events.map(e=>'<li>'+esc(new Date(e.t).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}))+' '+esc(e.text)+'</li>').join('')+'</ul>':'<p class="empty">No events yet.</p>';
+  $('fnoPanel').innerHTML='<p class="why"><b>Paper only.</b> Each week the book sells a NIFTY call and put about one standard deviation away and buys protection 1% further out, so the worst case is known. Sells at the bid, buys at the ask, stops at 1.5x the credit, exits 15:15 on expiry day. It also saves the real option chain twice a day ('+(f.snaps||0)+' snapshots so far) for later tests. The history test of this idea was weak: see the study guide.</p>'+tokenNote+
+    '<div class="stats" style="margin-top:10px">'+tiles.map(([k,val])=>'<div class="tile"><span>'+k+'</span><b>'+val+'</b></div>').join('')+'</div>'+
+    '<h3 style="margin:16px 0 4px;font-size:.95rem">Open position</h3>'+posHtml+skipped+
+    '<h3 style="margin:16px 0 4px;font-size:.95rem">Closed condors</h3>'+closed+
+    '<h3 style="margin:16px 0 4px;font-size:.95rem">Activity</h3>'+ev+
+    '<p class="why" style="margin-top:10px"><a href="/api/fno/trades.json" target="_blank">Trades (JSON)</a> &middot; <a href="/api/fno/chain.json" target="_blank">Saved option chains (JSON)</a> &middot; <a href="/api/fno" target="_blank">Raw state</a></p>';
+}
+
 async function loadV5(){
   try{
     const r=await fetch('/api/v5',{cache:'no-store'});
@@ -427,7 +463,7 @@ function renderV5(v){
     '<h3 style="margin:16px 0 4px;font-size:.95rem">V5 Activity Log</h3>'+evList+
     '<p class="why" style="margin-top:10px"><a href="/api/v5/trades.json" target="_blank">Download V5 Trade Journal (JSON)</a> &middot; <a href="/api/v5" target="_blank">Raw V5 State API</a></p>';
 }
-setInterval(()=>{const p=document.querySelector('.panel.on');if(p&&p.dataset.panel==='momentum')loadMbook();if(p&&p.dataset.panel==='movers')loadMovers();if(p&&p.dataset.panel==='v5')loadV5();},15000);
+setInterval(()=>{const p=document.querySelector('.panel.on');if(p&&p.dataset.panel==='momentum')loadMbook();if(p&&p.dataset.panel==='movers')loadMovers();if(p&&p.dataset.panel==='v5')loadV5();if(p&&p.dataset.panel==='fno')loadFno();},15000);
 function showTab(t){
   if(!document.querySelector('[data-panel="'+t+'"]'))t='overview';
   document.querySelectorAll('[data-panel]').forEach(p=>p.classList.toggle('on',p.dataset.panel===t));
@@ -436,6 +472,7 @@ function showTab(t){
   if(t==='momentum')loadMbook();
   if(t==='movers')loadMovers();
   if(t==='v5')loadV5();
+  if(t==='fno')loadFno();
   try{history.replaceState(null,'','#'+t)}catch(e){}
   if(lastState)render(lastState);
 }

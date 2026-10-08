@@ -104,6 +104,10 @@ module.exports = {
   // ---- Momentum Strategy V5 ----
   v5Enabled: process.env.V5_ENABLED !== '0' && ((process.env.MODE || 'replay') === 'live' || process.env.V5_FORCE === '1'),
   v5Capital: num('V5_CAPITAL', 50000),
+  fnoEnabled: process.env.FNO_ENABLED !== '0' && ((process.env.MODE || 'replay') === 'live' || process.env.FNO_FORCE === '1'),   // F&O paper book (lib/fno.js)
+  fnoCapital: num('FNO_CAPITAL', 50000),
+  fnoLot: num('FNO_LOT', 65),                // NIFTY lot size: check the current NSE value
+  fnoMaxRiskPct: num('FNO_MAX_RISK', 25),    // worst-case loss of one condor as a % of the F&O capital
   v5MinScore: num('V5_MIN_SCORE', 60),
   v5Slots: num('V5_SLOTS', 12),
   v5MaxPositions: num('V5_MAX_POS', 3),
