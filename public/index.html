@@ -65,6 +65,18 @@ canvas{display:block;width:100%;height:180px;margin-top:10px}
 .mt{width:100%;border-collapse:collapse;font-size:.78rem;margin-top:6px}
 .mt th,.mt td{text-align:left;padding:5px 6px;border-top:1px solid var(--line)}
 .mt th{color:var(--muted);font-weight:600}
+.v5grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-top:8px}
+.v5c{background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-width:0}
+.v5h{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:8px}
+.v5h .sym{font-size:1.02rem;font-weight:700}
+.v5h .meta{margin-left:auto;font-size:.74rem;color:var(--muted)}
+.v5kvs{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
+.v5kv{min-width:0}
+.v5kv span{display:block;font-size:.7rem;color:var(--muted);font-weight:600}
+.v5kv b{font-size:.95rem;overflow-wrap:anywhere}
+.v5kv.wide{grid-column:1/-1;border-top:1px solid var(--line);padding-top:8px}
+.v5kv.wide b{font-size:1.05rem}
+@media (max-width:520px){.v5grid{grid-template-columns:1fr}}
 .chk{margin-top:6px}
 .ck{display:flex;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:.8rem}
 .ck:first-child{border-top:0}
@@ -374,44 +386,43 @@ function renderV5(v){
     ['Trades Today',(v.tradesToday||0)+' / 6 max'],
     ['Phase',(v.phase||'idle').toUpperCase()]
   ];
+  // Cards instead of wide tables: readable on a phone, and a grid on a desktop.
+  const kv=(k,val,c,wide)=>'<div class="v5kv'+(wide?' wide':'')+'"><span>'+k+'</span><b'+(c?' class="'+c+'"':'')+'>'+val+'</b></div>';
+  const sideChip=s=>'<span class="chip '+(s==='BUY'?'bull':'bear')+'">'+(s==='BUY'?'LONG':'SHORT')+'</span>';
   const posTable=v.openPositions&&v.openPositions.length?
-    '<table class="mt"><tr><th>Setup</th><th>Stock</th><th>Side</th><th>Qty</th><th>Entry</th><th>Current price</th><th>Open P&amp;L</th><th>Stop (SL)</th><th>Target (1.5R)</th><th>Score</th></tr>'+
-    v.openPositions.map(p=>{const sc=v.scores&&v.scores[p.sym],px=sc?sc.c:null,pnl=px==null?null:(px-p.entry)*p.qty*(p.side==='BUY'?1:-1);
-      return '<tr><td><span class="badge ok">Setup '+esc(p.setup)+'</span></td><td><b>'+esc(p.sym)+'</b></td><td><span class="chip '+(p.side==='BUY'?'bull':'bear')+'">'+p.side+'</span></td><td>'+p.qty+'</td><td>'+inr(p.entry)+'</td><td>'+(px==null?'-':'<b>'+inr(px)+'</b>')+'</td><td class="'+cls(pnl||0)+'">'+(pnl==null?'-':'<b>'+sgn(pnl,2)+'</b> ('+(pnl>=0?'+':'−')+Math.abs(pnl/(p.entry*p.qty)*100).toFixed(2)+'%)')+'</td><td>'+inr(p.stop)+'</td><td>'+inr(p.target)+'</td><td><b>'+p.score+'/100</b></td></tr>';}).join('')+
-    '</table>':'<p class="empty">No open positions.</p>';
+    '<div class="v5grid">'+v.openPositions.map(p=>{
+      const sc=v.scores&&v.scores[p.sym],px=sc?sc.c:null,pnl=px==null?null:(px-p.entry)*p.qty*(p.side==='BUY'?1:-1);
+      const pct=pnl==null?'':' ('+(pnl>=0?'+':'−')+Math.abs(pnl/(p.entry*p.qty)*100).toFixed(2)+'%)';
+      return '<div class="v5c"><div class="v5h"><span class="sym">'+esc(p.sym)+'</span>'+sideChip(p.side)+'<span class="badge ok">Setup '+esc(p.setup)+'</span><span class="meta">'+p.qty+' shares &middot; score '+p.score+'</span></div>'+
+        '<div class="v5kvs">'+kv('Entry',inr(p.entry))+kv('Current price',px==null?'-':inr(px))+kv('Target (1.5R)',inr(p.target),'gain')+kv('Stop loss',inr(p.stop),'loss')+
+        kv('Open P/L',pnl==null?'-':sgn(pnl,2)+pct,cls(pnl||0),true)+'</div></div>';
+    }).join('')+'</div>':'<p class="empty">No open positions.</p>';
 
   const top6Table=v.top6&&v.top6.length?
-    '<table class="mt"><tr><th>Stock</th><th>Pre-Score</th><th>Long Score</th><th>Short Score</th><th>Price</th><th>VWAP</th><th>RVOL</th><th>Trend (EMA9/21)</th></tr>'+
-    v.top6.map(s=>{
+    '<div class="v5grid">'+v.top6.map(s=>{
       const sc=v.scores&&v.scores[s.sym];
-      const lScore=sc?sc.longScore:'-';
-      const sScore=sc?sc.shortScore:'-';
-      const lHi=sc&&sc.longScore>=70;
-      const sHi=sc&&sc.shortScore>=70;
-      return '<tr><td><b>'+esc(s.sym)+'</b><div class="why" style="margin:0">'+esc(s.name||'')+'</div></td>'+
-        '<td><b>'+s.preScore+'</b></td>'+
-        '<td>'+(lHi?'<span class="badge ok">'+lScore+'</span>':lScore)+'</td>'+
-        '<td>'+(sHi?'<span class="badge no">'+sScore+'</span>':sScore)+'</td>'+
-        '<td>'+(sc?inr(sc.c):inr(s.close))+'</td>'+
-        '<td>'+(sc?inr(sc.vw):'-')+'</td>'+
-        '<td>'+(sc?sc.rvol.toFixed(1)+'x':'-')+'</td>'+
-        '<td>'+(sc?inr(sc.e9)+' / '+inr(sc.e21):'-')+'</td></tr>';
-    }).join('')+'</table>':'<p class="empty">Waiting for pre-market ranking (runs before 09:15 on trading days)...</p>';
+      const lScore=sc?sc.longScore:'-', sScore=sc?sc.shortScore:'-';
+      const lHi=sc&&sc.longScore>=(v.minScore||60), sHi=sc&&sc.shortScore>=(v.minScore||60);
+      return '<div class="v5c"><div class="v5h"><span class="sym">'+esc(s.sym)+'</span><span class="meta">pre-score '+s.preScore+'</span></div>'+
+        '<div class="why" style="margin:0 0 8px">'+esc(s.name||'')+'</div>'+
+        '<div class="v5kvs">'+kv('Long score',lHi?'<span class="badge ok">'+lScore+'</span>':lScore)+kv('Short score',sHi?'<span class="badge no">'+sScore+'</span>':sScore)+
+        kv('Price',sc?inr(sc.c):inr(s.close))+kv('VWAP',sc?inr(sc.vw):'-')+kv('RVOL',sc?sc.rvol.toFixed(1)+'x':'-')+kv('EMA 9 / 21',sc?inr(sc.e9)+' / '+inr(sc.e21):'-')+'</div></div>';
+    }).join('')+'</div>':'<p class="empty">Waiting for pre-market ranking (runs at 09:21 on trading days)...</p>';
 
   const tradesTable=v.closedTrades&&v.closedTrades.length?
-    '<table class="mt"><tr><th>Setup</th><th>Stock</th><th>Side</th><th>Entry</th><th>Exit</th><th>P&L</th><th>R-Multiple</th><th>Exit Reason</th><th>Score</th></tr>'+
-    v.closedTrades.map(t=>'<tr><td><span class="badge ok">Setup '+esc(t.setup)+'</span></td><td><b>'+esc(t.sym)+'</b></td><td><span class="chip '+(t.side==='BUY'?'bull':'bear')+'">'+t.side+'</span></td><td>'+inr(t.entry)+'</td><td>'+inr(t.exit)+'</td><td class="'+cls(t.netPnL)+'"><b>'+sgn(t.netPnL,2)+'</b></td><td>'+(t.r>=0?'+':'')+t.r.toFixed(2)+'R</td><td>'+esc(t.exitReason)+'</td><td>'+t.score+'</td></tr>').join('')+
-    '</table>':'<p class="empty">No closed trades yet.</p>';
+    '<div class="v5grid">'+v.closedTrades.slice().reverse().map(t=>
+      '<div class="v5c"><div class="v5h"><span class="sym">'+esc(t.sym)+'</span>'+sideChip(t.side)+'<span class="badge ok">Setup '+esc(t.setup)+'</span><span class="meta">score '+t.score+'</span></div>'+
+      '<div class="v5kvs">'+kv('Entry',inr(t.entry))+kv('Exit',inr(t.exit))+kv('Net P&amp;L',sgn(t.netPnL,2),cls(t.netPnL))+kv('R multiple',(t.r>=0?'+':'')+t.r.toFixed(2)+'R',cls(t.r))+kv('Exit reason',esc(t.exitReason),'',true)+'</div></div>').join('')+'</div>':'<p class="empty">No closed trades yet.</p>';
 
   const evList=v.events&&v.events.length?
     '<ul class="act">'+v.events.slice(0,15).map(e=>'<li>'+esc(new Date(e.t).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit'}))+' '+esc(e.text)+'</li>').join('')+'</ul>':'<p class="empty">No events logged yet.</p>';
 
-  const desc='<p class="why"><b>Momentum Strategy V5:</b> Continuous score-based daily momentum trading on the top 6 pre-market ranked Nifty 200 stocks. Trades when Live Momentum Score &ge; 70/100 across 3 windows: <b>Setup A</b> (09:30-10:30 Opening Breakout), <b>Setup B</b> (10:30-13:30 Pullback Continuation), and <b>Setup C</b> (13:30-14:45 Consolidation Breakout). Target: 1.5R. Clamped stops: 0.4% - 1.2%. Square off at 15:15 IST.</p>';
+  const desc='<p class="why"><b>Momentum Strategy V5:</b> Continuous score-based daily momentum trading on the top '+(v.slots||6)+' pre-market ranked Nifty 200 stocks. Trades when Live Momentum Score &ge; '+(v.minScore||60)+'/100 across 3 windows: <b>Setup A</b> (09:30-10:30 Opening Breakout), <b>Setup B</b> (10:30-13:30 Pullback Continuation), and <b>Setup C</b> (13:30-14:45 Consolidation Breakout). Target: 1.5R. Clamped stops: 0.4% - 1.2%. Square off at 15:15 IST.</p>';
 
   $('v5Panel').innerHTML=desc+
     '<div class="stats" style="margin-top:10px">'+tiles.map(([k,val])=>'<div class="tile"><span>'+k+'</span><b>'+val+'</b></div>').join('')+'</div>'+
     '<h3 style="margin:16px 0 4px;font-size:.95rem">Open Positions ('+(v.openPositions?v.openPositions.length:0)+')</h3>'+posTable+
-    '<h3 style="margin:16px 0 4px;font-size:.95rem">Top 6 Watchlist & Live Momentum Scores (Trigger &ge; 70)</h3>'+top6Table+
+    '<h3 style="margin:16px 0 4px;font-size:.95rem">Watchlist &amp; live momentum scores (trigger &ge; '+(v.minScore||60)+')</h3>'+top6Table+
     '<h3 style="margin:16px 0 4px;font-size:.95rem">Recent Closed Trades</h3>'+tradesTable+
     '<h3 style="margin:16px 0 4px;font-size:.95rem">V5 Activity Log</h3>'+evList+
     '<p class="why" style="margin-top:10px"><a href="/api/v5/trades.json" target="_blank">Download V5 Trade Journal (JSON)</a> &middot; <a href="/api/v5" target="_blank">Raw V5 State API</a></p>';
