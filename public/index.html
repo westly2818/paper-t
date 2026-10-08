@@ -375,8 +375,9 @@ function renderV5(v){
     ['Phase',(v.phase||'idle').toUpperCase()]
   ];
   const posTable=v.openPositions&&v.openPositions.length?
-    '<table class="mt"><tr><th>Setup</th><th>Stock</th><th>Side</th><th>Qty</th><th>Entry</th><th>Stop (SL)</th><th>Target (1.5R)</th><th>Score</th></tr>'+
-    v.openPositions.map(p=>'<tr><td><span class="badge ok">Setup '+esc(p.setup)+'</span></td><td><b>'+esc(p.sym)+'</b></td><td><span class="chip '+(p.side==='BUY'?'bull':'bear')+'">'+p.side+'</span></td><td>'+p.qty+'</td><td>'+inr(p.entry)+'</td><td>'+inr(p.stop)+'</td><td>'+inr(p.target)+'</td><td><b>'+p.score+'/100</b></td></tr>').join('')+
+    '<table class="mt"><tr><th>Setup</th><th>Stock</th><th>Side</th><th>Qty</th><th>Entry</th><th>Current price</th><th>Open P&amp;L</th><th>Stop (SL)</th><th>Target (1.5R)</th><th>Score</th></tr>'+
+    v.openPositions.map(p=>{const sc=v.scores&&v.scores[p.sym],px=sc?sc.c:null,pnl=px==null?null:(px-p.entry)*p.qty*(p.side==='BUY'?1:-1);
+      return '<tr><td><span class="badge ok">Setup '+esc(p.setup)+'</span></td><td><b>'+esc(p.sym)+'</b></td><td><span class="chip '+(p.side==='BUY'?'bull':'bear')+'">'+p.side+'</span></td><td>'+p.qty+'</td><td>'+inr(p.entry)+'</td><td>'+(px==null?'-':'<b>'+inr(px)+'</b>')+'</td><td class="'+cls(pnl||0)+'">'+(pnl==null?'-':'<b>'+sgn(pnl,2)+'</b> ('+(pnl>=0?'+':'−')+Math.abs(pnl/(p.entry*p.qty)*100).toFixed(2)+'%)')+'</td><td>'+inr(p.stop)+'</td><td>'+inr(p.target)+'</td><td><b>'+p.score+'/100</b></td></tr>';}).join('')+
     '</table>':'<p class="empty">No open positions.</p>';
 
   const top6Table=v.top6&&v.top6.length?
