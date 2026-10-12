@@ -83,6 +83,11 @@ canvas{display:block;width:100%;height:180px;margin-top:10px}
 .v5kv.wide{grid-column:1/-1;border-top:1px solid var(--line);padding-top:8px}
 .v5kv.wide b{font-size:1.05rem}
 @media (max-width:520px){.v5grid{grid-template-columns:1fr}}
+.datebar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.datebar label{font-size:.8rem;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:6px}
+.datebar input{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+.datebar button{padding:6px 10px}
+.daysum{font-size:.82rem;color:var(--muted);margin:2px 0 6px}
 .chk{margin-top:6px}
 .ck{display:flex;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:.8rem}
 .ck:first-child{border-top:0}
@@ -203,7 +208,7 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     </section>
     </div>
     <div class="panel" data-panel="trades">
-      <section class="card" id="cClosed"><h2>Closed trades</h2><div id="closed"></div><p class="why" style="margin-top:10px">Full history for analysis (kept forever): <a href="/api/export/trades.csv">all trades CSV</a> · <a href="/api/export/trades.json">JSON</a> · <a href="/api/export/days.json">daily log</a> · <a href="/api/export/signals.csv">every setup incl. rejected (CSV)</a> · day candles: /api/export/candles.json?day=YYYY-MM-DD</p></section>
+      <section class="card" id="cClosed"><h2>Closed trades</h2><div class="datebar"><label>Date <input type="date" id="tradesDay"></label><button type="button" data-today="tradesDay">Today</button></div><p class="daysum" id="closedSum"></p><div id="closed"></div><p class="why" style="margin-top:10px">Full history for analysis (kept forever): <a href="/api/export/trades.csv">all trades CSV</a> · <a href="/api/export/trades.json">JSON</a> · <a href="/api/export/days.json">daily log</a> · <a href="/api/export/signals.csv">every setup incl. rejected (CSV)</a> · day candles: /api/export/candles.json?day=YYYY-MM-DD</p></section>
     </div>
     <div class="panel" data-panel="strategy">
       <section class="card" id="cRules"><h2>Live strategy</h2><div id="rules" class="rules"></div></section>
@@ -458,11 +463,26 @@ function renderFno(f){
 async function loadV5(){
   try{
     const r=await fetch('/api/v5',{cache:'no-store'});
-    renderV5(await r.json());
+    const j=await r.json();if(document.activeElement&&document.activeElement.id==='v5Day'){lastV5=j;return;}renderV5(j);
   }catch(e){
     $('v5Panel').innerHTML='<p class="empty">Could not load V5 engine data.</p>';
   }
 }
+// Dates are Indian dates. null means today, so the tabs show only today's trades until you pick another day.
+const istDay=ms=>new Date(ms+19800000).toISOString().slice(0,10);
+const todayIst=()=>istDay(Date.now());
+let v5Day=null,tradesDay=null,lastV5=null,lastS=null;
+const daySummary=(rows,net)=>{const w=rows.filter(r=>net(r)>0).length,t=rows.reduce((a,r)=>a+net(r),0);return rows.length?rows.length+' trade'+(rows.length>1?'s':'')+', '+w+' win'+(w===1?'':'s')+', net <b class="'+cls(t)+'">'+sgn(t,2)+'</b>':'No trades';};
+document.addEventListener('change',e=>{
+  const id=e.target&&e.target.id;
+  if(id==='v5Day'){v5Day=e.target.value&&e.target.value!==todayIst()?e.target.value:null;if(lastV5)renderV5(lastV5);}
+  if(id==='tradesDay'){tradesDay=e.target.value&&e.target.value!==todayIst()?e.target.value:null;if(lastS)renderClosedTrades(lastS);}
+});
+document.addEventListener('click',e=>{
+  const b=e.target&&e.target.closest?e.target.closest('[data-today]'):null;if(!b)return;
+  if(b.dataset.today==='v5Day'){v5Day=null;if(lastV5)renderV5(lastV5);}
+  if(b.dataset.today==='tradesDay'){tradesDay=null;if(lastS)renderClosedTrades(lastS);}
+});
 function renderV5(v){
   if(!v||!v.enabled){$('v5Panel').innerHTML='<p class="empty">Momentum Strategy V5 is off (it runs in live mode or with V5_FORCE=1).</p>';return;}
   if(v.loading){$('v5Panel').innerHTML='<p class="empty">Starting V5 Engine...</p>';return;}
@@ -496,10 +516,13 @@ function renderV5(v){
         kv('Price',sc?inr(sc.c):inr(s.close))+kv('VWAP',sc?inr(sc.vw):'-')+kv('RVOL',sc?sc.rvol.toFixed(1)+'x':'-')+kv('EMA 9 / 21',sc?inr(sc.e9)+' / '+inr(sc.e21):'-')+'</div></div>';
     }).join('')+'</div>':'<p class="empty">Waiting for pre-market ranking (runs at 09:21 on trading days)...</p>';
 
-  const tradesTable=v.closedTrades&&v.closedTrades.length?
-    '<div class="v5grid">'+v.closedTrades.slice().reverse().map(t=>
-      '<div class="v5c"><div class="v5h"><span class="sym">'+esc(t.sym)+'</span>'+sideChip(t.side)+'<span class="badge ok">Setup '+esc(t.setup)+'</span><span class="meta">score '+t.score+'</span></div>'+
-      '<div class="v5kvs">'+kv('Entry',inr(t.entry))+kv('Exit',inr(t.exit))+kv('Net P&amp;L',sgn(t.netPnL,2),cls(t.netPnL))+kv('R multiple',(t.r>=0?'+':'')+t.r.toFixed(2)+'R',cls(t.r))+kv('Exit reason',esc(t.exitReason),'',true)+'</div></div>').join('')+'</div>':'<p class="empty">No closed trades yet.</p>';
+  lastV5=v;
+  const day5=v5Day||todayIst(), dayTrades=(v.closedTrades||[]).filter(t=>t.closedAt&&istDay(t.closedAt)===day5);
+  const dayBar='<div class="datebar"><label>Date <input type="date" id="v5Day" value="'+day5+'" max="'+todayIst()+'"></label><button type="button" data-today="v5Day">Today</button></div><p class="daysum">'+(day5===todayIst()?'Today':esc(day5))+': '+daySummary(dayTrades,t=>t.netPnL)+'</p>';
+  const tradesTable=dayBar+(dayTrades.length?
+    '<div class="v5grid">'+dayTrades.slice().reverse().map(t=>
+      '<div class="v5c"><div class="v5h"><span class="sym">'+esc(t.sym)+'</span>'+sideChip(t.side)+'<span class="badge ok">Setup '+esc(t.setup)+'</span><span class="meta">'+tm(t.closedAt)+' &middot; score '+t.score+'</span></div>'+
+      '<div class="v5kvs">'+kv('Entry',inr(t.entry))+kv('Exit',inr(t.exit))+kv('Net P&amp;L',sgn(t.netPnL,2),cls(t.netPnL))+kv('R multiple',(t.r>=0?'+':'')+t.r.toFixed(2)+'R',cls(t.r))+kv('Exit reason',esc(t.exitReason),'',true)+'</div></div>').join('')+'</div>':'<p class="empty">No closed trades on this day.</p>');
 
   const evList=v.events&&v.events.length?
     '<ul class="act">'+v.events.slice(0,15).map(e=>'<li>'+esc(new Date(e.t).toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata',hour:'2-digit',minute:'2-digit',second:'2-digit'}))+' '+esc(e.text)+'</li>').join('')+'</ul>':'<p class="empty">No events logged yet.</p>';
@@ -510,7 +533,7 @@ function renderV5(v){
     '<div class="stats" style="margin-top:10px">'+tiles.map(([k,val])=>'<div class="tile"><span>'+k+'</span><b>'+val+'</b></div>').join('')+'</div>'+
     '<h3 style="margin:16px 0 4px;font-size:.95rem">Open Positions ('+(v.openPositions?v.openPositions.length:0)+')</h3>'+posTable+
     '<h3 style="margin:16px 0 4px;font-size:.95rem">Watchlist &amp; live momentum scores (trigger &ge; '+(v.minScore||60)+')</h3>'+top6Table+
-    '<h3 style="margin:16px 0 4px;font-size:.95rem">Recent Closed Trades</h3>'+tradesTable+
+    '<h3 style="margin:16px 0 4px;font-size:.95rem">Closed trades</h3>'+tradesTable+
     '<h3 style="margin:16px 0 4px;font-size:.95rem">V5 Activity Log</h3>'+evList+
     '<p class="why" style="margin-top:10px"><a href="/api/v5/trades.json" target="_blank">Download V5 Trade Journal (JSON)</a> &middot; <a href="/api/v5" target="_blank">Raw V5 State API</a></p>';
 }
@@ -535,10 +558,21 @@ function initTabs(){
   if(!t){try{t=localStorage.getItem('pt_tab')||''}catch(e){}}
   showTab(t||'overview');
 }
+function renderClosedTrades(s){
+  const day=tradesDay||todayIst(), rows=s.closed.filter(t=>t.tIn&&istDay(t.tIn)===day);
+  const bar=$('tradesDay'); if(bar){ if(document.activeElement!==bar) bar.value=day; bar.max=todayIst(); }
+  $('closedSum').innerHTML=(day===todayIst()?'Today':esc(day))+': '+daySummary(rows,t=>t.net);
+  $('closed').innerHTML=rows.length?rows.map(t=>{
+    const buy=t.side==='long';
+    return `<div class="pos"><div class="pr1"><div><b>${esc(t.sym)}</b> <span class="chip ${buy?'bull':'bear'}">${buy?'BUY then SELL':'SELL then BUY'}</span></div><div class="r ${cls(t.net)}"><b>${sgn(t.net,2)}</b><small>${t.r>=0?'+':''}${t.r.toFixed(2)}R</small></div></div>
+      <div class="dg">${cell('Quantity',t.qty+' shares')}${cell(buy?'Buy price':'Sell price',inr(t.entry))}${cell(buy?'Sell price':'Buy price',inr(t.exit))}${cell(buy?'Buy value':'Sell value',money(t.qty*t.entry,2))}${cell(buy?'Sell value':'Buy value',money(t.qty*t.exit,2))}${cell('Entered at',dt(t.tIn))}${cell('Exited at',dt(t.tOut))}${cell('Gross P&L',sgn(t.gross,2))}${cell('Charges',money(t.fees,2))}${cell('Net P&L',sgn(t.net,2))}${cell('Stop / Target',inr(t.sl0)+' / '+inr(t.tp))}${t.score!=null?cell('Setup score',t.score+' (grade '+t.grade+')'):''}</div>
+      <div class="why" style="margin-top:6px">Exit: ${esc(t.reason)}${t.moved?' (stop was raised)':''}. Why entered: ${esc(t.why||'')}</div>${t.entryChecks?`<details class="dd" data-k="closed-${esc(t.sym)}-${t.tIn}"><summary>Why this trade triggered (conditions at entry)</summary>${checksHtml(t.entryChecks)}${ctxHtml(t.entryCtx)}</details>`:''}</div>`;
+  }).join(''):'<p class="empty">No closed trades on this day.</p>';
+}
 function render(s){
   lastState=s;
   $('tcPos').textContent=s.positions.length||'';
-  $('tcClosed').textContent=s.closed.length||'';
+  $('tcClosed').textContent=s.closed.filter(t=>t.tIn&&istDay(t.tIn)===todayIst()).length||'';
   $('tcWatch').textContent=s.live?s.live.stocks.filter(st=>Object.values(st.legs||{}).some(l=>l.status==='waiting')).length||'':'';
   renderRules(s);
   last=s;
@@ -662,12 +696,7 @@ function render(s){
     $('rej').hidden=!s.watch.rejected.length;
   }else{$('plans').innerHTML='<p class="empty">Analysing daily charts...</p>';$('rej').hidden=true;}
 
-  $('closed').innerHTML=s.closed.length?s.closed.map(t=>{
-    const buy=t.side==='long';
-    return `<div class="pos"><div class="pr1"><div><b>${esc(t.sym)}</b> <span class="chip ${buy?'bull':'bear'}">${buy?'BUY then SELL':'SELL then BUY'}</span></div><div class="r ${cls(t.net)}"><b>${sgn(t.net,2)}</b><small>${t.r>=0?'+':''}${t.r.toFixed(2)}R</small></div></div>
-      <div class="dg">${cell('Quantity',t.qty+' shares')}${cell(buy?'Buy price':'Sell price',inr(t.entry))}${cell(buy?'Sell price':'Buy price',inr(t.exit))}${cell(buy?'Buy value':'Sell value',money(t.qty*t.entry,2))}${cell(buy?'Sell value':'Buy value',money(t.qty*t.exit,2))}${cell('Entered at',dt(t.tIn))}${cell('Exited at',dt(t.tOut))}${cell('Gross P&L',sgn(t.gross,2))}${cell('Charges',money(t.fees,2))}${cell('Net P&L',sgn(t.net,2))}${cell('Stop / Target',inr(t.sl0)+' / '+inr(t.tp))}${t.score!=null?cell('Setup score',t.score+' (grade '+t.grade+')'):''}</div>
-      <div class="why" style="margin-top:6px">Exit: ${esc(t.reason)}${t.moved?' (stop was raised)':''}. Why entered: ${esc(t.why||'')}</div>${t.entryChecks?`<details class="dd" data-k="closed-${esc(t.sym)}-${t.tIn}"><summary>Why this trade triggered (conditions at entry)</summary>${checksHtml(t.entryChecks)}${ctxHtml(t.entryCtx)}</details>`:''}</div>`;
-  }).join(''):'<p class="empty">No closed trades yet.</p>';
+  lastS=s; renderClosedTrades(s);
 
   $('log').innerHTML=s.events.length?s.events.map(e=>`<li class="lg ${e.kind}"><span class="lt">${tm(e.t)}</span><span class="lm">${esc(e.text)}</span></li>`).join(''):'<li class="empty">Waiting for the market plan...</li>';
 }
