@@ -107,7 +107,9 @@ module.exports = {
   fnoEnabled: process.env.FNO_ENABLED !== '0' && ((process.env.MODE || 'replay') === 'live' || process.env.FNO_FORCE === '1'),   // F&O paper book (lib/fno.js)
   fnoCapital: num('FNO_CAPITAL', 50000),
   fnoLot: num('FNO_LOT', 65),                // NIFTY lot size: check the current NSE value
-  fnoMaxRiskPct: num('FNO_MAX_RISK', 25),    // worst-case loss of one condor as a % of the F&O capital
+  fnoMaxRiskPct: num('FNO_MAX_RISK', 25),
+  issEnabled: process.env.ISS_ENABLED !== '0' && ((process.env.MODE || 'replay') === 'live' || process.env.ISS_FORCE === '1'),   // ISS paper book: intraday short straddle on real option quotes (lib/iss.js)
+  issMargin: num('ISS_MARGIN', 200000),     // reference margin for one short straddle, only used for the % figures on the tab    // worst-case loss of one condor as a % of the F&O capital
   v5MinScore: num('V5_MIN_SCORE', 60),
   v5Slots: num('V5_SLOTS', 12),
   v5MaxPositions: num('V5_MAX_POS', 3),

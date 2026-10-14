@@ -9,6 +9,8 @@ const { MomentumBook } = require('./lib/momentum');
 const { MoverScanner } = require('./lib/movers');
 const { V5Engine } = require('./lib/v5-engine');
 const { FnoBook } = require('./lib/fno');
+const { IssBook } = require('./lib/iss');
+const { FyersAuth } = require('./lib/fyers-auth');
 const { atMinute, dayKey, OPEN, CLOSE } = require('./lib/time');
 const dbhealth = require('./lib/dbhealth');
 
@@ -64,9 +66,21 @@ if (fno) {
     .catch(e => console.error('F&O book failed to start:', e.message));
 }
 
+// ISS paper book (intraday short straddle on real option quotes): own timer and storage keys.
+const iss = cfg.issEnabled ? new IssBook(cfg) : null;
+if (iss) {
+  iss.load().then(() => setInterval(() => { iss.tick().catch(e => console.error('ISS book:', e.message)); }, 60000))
+    .catch(e => console.error('ISS book failed to start:', e.message));
+}
+
+// Fyers login from the page (button, PIN refresh). Needs FYERS_APP_ID and FYERS_SECRET in the environment.
+const fyersAuth = cfg.mode === 'live' || process.env.FYERS_FORCE === '1' ? new FyersAuth(cfg) : null;
+if (fyersAuth) setInterval(() => { fyersAuth.maybeAutoRefresh().then(r => { if (r) console.log('Fyers auto refresh:', r.ok ? 'ok' : r.message); }).catch(e => console.error('Fyers auto refresh:', e.message)); }, 5 * 60000);
+
 // Render sends SIGTERM on every redeploy or restart: write everything out before exiting.
 for (const sig of ['SIGTERM', 'SIGINT']) {
   process.on(sig, async () => {
+    try { if (iss && iss.state) await iss.save(); } catch (e) { console.error('ISS shutdown save failed:', e.message); }
     try { if (fno && fno.state) await fno.save(); } catch (e) { console.error('F&O shutdown save failed:', e.message); }
     try { if (v5 && v5.state) await v5.save(); } catch (e) { console.error('V5 shutdown save failed:', e.message); }
     try { if (movers && movers.state) await movers.save(); } catch (e) { console.error('Movers shutdown save failed:', e.message); }
@@ -76,6 +90,7 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
   });
 }
 
+const fyersPage = (title, text, ok) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><body style="font-family:system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 16px"><h2 style="color:${ok ? '#0B8A5B' : '#D0402D'}">${title}</h2><p>${String(text).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))}</p><p><a href="/#data">Back to the app</a></p>${ok ? '<script>setTimeout(function(){location.href="/#data"},2500)</script>' : ''}</body>`;
 const send = (res, code, type, body) => { res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store' }); res.end(body); };
 
 // Data tab: is everything being saved to the database? The Redis facts are cached for 15 minutes (a manual re-check is allowed once a
@@ -126,6 +141,25 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/mbook/trades.json') {
     if (!mbook) return send(res, 404, 'application/json', '{"error":"momentum book is off"}');
     mbook.store.list('trades').then(l => send(res, 200, 'application/json', JSON.stringify(l))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message })));
+    return;
+  }
+  if (url.pathname === '/api/iss') return send(res, 200, 'application/json', JSON.stringify(iss ? iss.snapshot() : { enabled: false }));
+  if (url.pathname === '/api/iss/trades.json' || url.pathname === '/api/iss/quotes.json') { if (!iss) return send(res, 404, 'application/json', '{}'); return iss.store.list(url.pathname.includes('trades') ? 'trades' : 'quotes').then(l => send(res, 200, 'application/json', JSON.stringify(l))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message }))); }
+  // ---- Fyers login from the page
+  if (url.pathname === '/api/fyers/status') { if (!fyersAuth) return send(res, 200, 'application/json', '{"enabled":false}'); return fyersAuth.status().then(st => send(res, 200, 'application/json', JSON.stringify({ enabled: true, ...st, redirect: fyersAuth.redirectFor(req) }))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message }))); }
+  if (url.pathname === '/fyers/login') {
+    if (!fyersAuth || !fyersAuth.configured()) return send(res, 400, 'text/html; charset=utf-8', fyersPage('Fyers login is not set up', 'The server needs FYERS_APP_ID and FYERS_SECRET in its environment. Add them (Render: Environment tab), redeploy, and try again.', false));
+    const { url: to } = fyersAuth.startLogin(fyersAuth.redirectFor(req)); res.writeHead(302, { Location: to, 'Cache-Control': 'no-store' }); return res.end();
+  }
+  if (url.pathname === '/fyers/callback' || url.pathname === '/callback') {
+    if (!fyersAuth) return send(res, 404, 'text/plain', 'Not found');
+    const q = Object.fromEntries(url.searchParams);
+    return fyersAuth.handleCallback(q).then(r => send(res, r.ok ? 200 : r.status || 400, 'text/html; charset=utf-8', fyersPage(r.ok ? 'Fyers connected' : 'Fyers login did not complete', r.message, r.ok))).catch(e => send(res, 500, 'text/html; charset=utf-8', fyersPage('Fyers login failed', e.message, false)));
+  }
+  if (url.pathname === '/api/fyers/refresh' && req.method === 'POST') {
+    if (!fyersAuth) return send(res, 404, 'application/json', '{"ok":false,"message":"Fyers login is off"}');
+    let body = ''; req.on('data', c => { body += c; if (body.length > 2000) req.destroy(); });
+    req.on('end', () => { let pin = ''; try { pin = JSON.parse(body).pin; } catch (e) { /* bad body */ } fyersAuth.refreshWithPin(pin).then(r => send(res, r.ok ? 200 : r.status || 400, 'application/json', JSON.stringify({ ok: r.ok, message: r.message }))).catch(e => send(res, 500, 'application/json', JSON.stringify({ ok: false, message: e.message }))); });
     return;
   }
   if (url.pathname === '/api/fno') return send(res, 200, 'application/json', JSON.stringify(fno ? fno.snapshot() : { enabled: false }));
