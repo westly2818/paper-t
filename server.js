@@ -10,6 +10,7 @@ const { MoverScanner } = require('./lib/movers');
 const { V5Engine } = require('./lib/v5-engine');
 const { FnoBook } = require('./lib/fno');
 const { IssBook } = require('./lib/iss');
+const { MlShadowView } = require('./lib/mlshadow');
 const { FyersAuth } = require('./lib/fyers-auth');
 const { atMinute, dayKey, OPEN, CLOSE } = require('./lib/time');
 const dbhealth = require('./lib/dbhealth');
@@ -68,6 +69,7 @@ if (fno) {
 
 // ISS paper book (intraday short straddle on real option quotes): own timer and storage keys.
 const iss = cfg.issEnabled ? new IssBook(cfg) : null;
+const mlShadow = new MlShadowView(cfg);           // read-only view of the ML shadow predictions (separate service)
 if (iss) {
   iss.load().then(() => setInterval(() => { iss.tick().catch(e => console.error('ISS book:', e.message)); }, 60000))
     .catch(e => console.error('ISS book failed to start:', e.message));
@@ -143,6 +145,7 @@ const server = http.createServer((req, res) => {
     mbook.store.list('trades').then(l => send(res, 200, 'application/json', JSON.stringify(l))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message })));
     return;
   }
+  if (url.pathname === '/api/mlshadow') return mlShadow.snapshot().then(j => send(res, 200, 'application/json', JSON.stringify(j))).catch(e => send(res, 200, 'application/json', JSON.stringify({ enabled: true, readOnly: true, empty: true, note: 'Could not read the shadow records: ' + e.message })));
   if (url.pathname === '/api/iss') return send(res, 200, 'application/json', JSON.stringify(iss ? iss.snapshot() : { enabled: false }));
   if (url.pathname === '/api/iss/trades.json' || url.pathname === '/api/iss/quotes.json') { if (!iss) return send(res, 404, 'application/json', '{}'); return iss.store.list(url.pathname.includes('trades') ? 'trades' : 'quotes').then(l => send(res, 200, 'application/json', JSON.stringify(l))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message }))); }
   // ---- Fyers login from the page

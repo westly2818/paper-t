@@ -172,6 +172,7 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     <button type="button" data-tab="v5">V5 Momentum <span class="cnt" id="tcV5"></span></button>
     <button type="button" data-tab="fno">F&amp;O <span class="cnt" id="tcFno"></span></button>
     <button type="button" data-tab="iss">ISS <span class="cnt" id="tcIss"></span></button>
+    <button type="button" data-tab="mlshadow">ML Shadow <span class="cnt" id="tcMl"></span></button>
     <button type="button" data-tab="momentum">Swing</button>
     <button type="button" data-tab="movers">Movers</button>
     <button type="button" data-tab="data">Data <span class="cnt" id="tcData"></span></button>
@@ -226,6 +227,9 @@ details ul{margin:6px 0 0;padding-left:18px;color:var(--muted)}
     </div>
     <div class="panel" data-panel="iss">
       <section class="card" id="cIss"><h2>ISS paper book: intraday short straddle (real option quotes)</h2><div class="fybox"></div><div id="issPanel"><p class="empty">Loading ISS...</p></div></section>
+    </div>
+    <div class="panel" data-panel="mlshadow">
+      <section class="card" id="cMl"><h2>ML shadow predictions (frozen model, forward test, no orders)</h2><div id="mlPanel"><p class="empty">Loading...</p></div></section>
     </div>
     <div class="panel" data-panel="momentum">
       <section class="card" id="cMom"><h2>Swing portfolio (paper only, holds for about a month)</h2><div id="mbook"><p class="empty">Loading...</p></div></section>
@@ -367,6 +371,29 @@ document.addEventListener('click',async e=>{
 });
 
 // ---- ISS tab: intraday short straddle on real option quotes
+async function loadMl(){
+  try{ const r=await fetch('/api/mlshadow',{cache:'no-store'}); renderMl(await r.json()); }
+  catch(e){ $('mlPanel').innerHTML='<p class="empty">Could not load the ML shadow records.</p>'; }
+}
+function renderMl(m){
+  const banner='<p class="why"><b>Shadow only.</b> A frozen XGBoost model predicts the next 30 minutes from completed candles. Nothing here places or can place an order, and these results are kept apart from the V3, V5, F&amp;O, ISS and Swing books. Backtests of this model lost money after costs, so treat everything here as measurement of whether it has any edge at all.</p>';
+  if(!m||m.empty){$('mlPanel').innerHTML=banner+'<p class="empty">'+esc((m&&m.note)||'No shadow predictions yet.')+'</p>';return;}
+  const s=m.summary||{}, H=s.hypothetical||{}, ic=s.rank_ic||{};
+  const tc=$('tcMl'); if(tc)tc.textContent=s.decisions_predicted?String(s.decisions_predicted):'';
+  const kv=(k,val,c)=>'<div class="v5kv"><span>'+k+'</span><b'+(c?' class="'+c+'"':'')+'>'+val+'</b></div>';
+  const bp=x=>x==null?'-':(x>=0?'+':'−')+Math.abs(x).toFixed(2)+' bps';
+  const ci=a=>a?' ['+a[0].toFixed(2)+', '+a[1].toFixed(2)+']':'';
+  const icTxt=ic.mean==null?'-':(ic.mean>=0?'+':'−')+Math.abs(ic.mean).toFixed(4)+(ic.ci95_day_clustered?ci(ic.ci95_day_clustered).replace(/\[(.*), (.*)\]/,' [$1, $2]'):' (needs 20 days for an interval)');
+  const net=H.net_bps_conservative;
+  const tiles=[kv('Model',esc(s.model_version||'-')+' <span class="muted">'+esc(s.model_sha||'')+'</span>'),kv('Decisions predicted / skipped',(s.decisions_predicted||0)+' / '+(s.decisions_skipped||0)),kv('Forward days',s.forward_days||0),kv('Resolved decisions',s.resolved_decisions||0),
+    kv('Rank IC (prediction vs actual 30-min relative return)',icTxt),kv('Hypothetical trades',H.trades||0),kv('Gross per trade',bp(H.gross_bps)),kv('Net, base slippage (4 bps round trip)',bp(H.net_bps_base),H.net_bps_base>=0?'gain':'loss'),
+    kv('Net, conservative (8 bps round trip)',bp(net)+(H.conservative_ci95_day_clustered?ci(H.conservative_ci95_day_clustered):''),net==null?'':net>=0?'gain':'loss'),
+    kv('Long / short net (conservative)',(H.long?bp(H.long.net_bps_conservative)+' ('+H.long.n+')':'-')+' / '+(H.short?bp(H.short.net_bps_conservative)+' ('+H.short.n+')':'-'))].join('');
+  const latest=(m.latest||[]).length?'<h3>Latest decision ('+esc((m.latest[0].time||'').replace('T',' '))+')</h3><table class="tbl"><tr><th>Rank</th><th>Stock</th><th>Predicted 30-min relative return</th><th>Hypothetical leg</th></tr>'+m.latest.map(p=>'<tr><td>'+p.rank+'</td><td>'+esc(p.symbol)+'</td><td>'+bp(p.prediction*1e4)+'</td><td>'+(p.leg?esc(p.leg):'')+'</td></tr>').join('')+'</table>':'';
+  const outs=(m.outcomes||[]).length?'<h3>Recent resolved predictions</h3><table class="tbl"><tr><th>Day</th><th>Slot</th><th>Stock</th><th>Predicted</th><th>Actual (relative)</th><th>Leg</th><th>Net, conservative</th></tr>'+m.outcomes.map(o=>'<tr><td>'+esc(o.day)+'</td><td>'+o.slot+'</td><td>'+esc(o.symbol)+'</td><td>'+bp(o.prediction*1e4)+'</td><td>'+(o.y_cs==null?'-':bp(o.y_cs*1e4))+'</td><td>'+(o.leg?esc(o.leg):'')+'</td><td>'+bp(o.net_bps_conservative)+'</td></tr>').join('')+'</table>':'';
+  const decs=(m.decisions||[]).length?'<h3>Decision log</h3><table class="tbl"><tr><th>Decision</th><th>Time</th><th>Status</th><th>Detail</th></tr>'+m.decisions.map(d=>'<tr><td>'+esc(d.id)+'</td><td>'+esc((d.time||'').replace('T',' '))+'</td><td>'+esc(d.status)+'</td><td>'+esc(d.reason||(d.predictions?d.predictions+' predictions':''))+'</td></tr>').join('')+'</table>':'';
+  $('mlPanel').innerHTML=banner+'<div class="v5kvs">'+tiles+'</div>'+latest+outs+decs+'<p class="why">Updated '+esc((s.updated_at||'').replace('T',' '))+'. Hypothetical results use a fixed Rs 50,000 per leg, standard Fyers charges and the slippage shown; they are not compounded.</p>';
+}
 async function loadIss(){
   try{ const r=await fetch('/api/iss',{cache:'no-store'}); renderIss(await r.json()); }
   catch(e){ $('issPanel').innerHTML='<p class="empty">Could not load the ISS book.</p>'; }
@@ -601,7 +628,7 @@ function renderV5(v){
     '<h3 style="margin:16px 0 4px;font-size:.95rem">V5 Activity Log</h3>'+evList+
     '<p class="why" style="margin-top:10px"><a href="/api/v5/trades.json" target="_blank">Download V5 Trade Journal (JSON)</a> &middot; <a href="/api/v5" target="_blank">Raw V5 State API</a></p>';
 }
-setInterval(()=>{const p=document.querySelector('.panel.on');if(p&&p.dataset.panel==='momentum')loadMbook();if(p&&p.dataset.panel==='movers')loadMovers();if(p&&p.dataset.panel==='v5')loadV5();if(p&&p.dataset.panel==='fno')loadFno();if(p&&p.dataset.panel==='iss')loadIss();if(p&&['iss','fno','data'].includes(p.dataset.panel))loadFyers();},15000);
+setInterval(()=>{const p=document.querySelector('.panel.on');if(p&&p.dataset.panel==='momentum')loadMbook();if(p&&p.dataset.panel==='movers')loadMovers();if(p&&p.dataset.panel==='v5')loadV5();if(p&&p.dataset.panel==='fno')loadFno();if(p&&p.dataset.panel==='iss')loadIss();if(p&&p.dataset.panel==='mlshadow')loadMl();if(p&&['iss','fno','data'].includes(p.dataset.panel))loadFyers();},15000);
 function showTab(t){
   if(!document.querySelector('[data-panel="'+t+'"]'))t='overview';
   document.querySelectorAll('[data-panel]').forEach(p=>p.classList.toggle('on',p.dataset.panel===t));
@@ -613,6 +640,7 @@ function showTab(t){
   if(t==='fno')loadFno();
   if(t==='data')loadDbHealth(true);
   if(t==='iss')loadIss();
+  if(t==='mlshadow')loadMl();
   if(t==='iss'||t==='fno'||t==='data')loadFyers();
   try{history.replaceState(null,'','#'+t)}catch(e){}
   if(lastState)render(lastState);
