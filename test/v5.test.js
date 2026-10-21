@@ -196,6 +196,8 @@ test('v5: position exit on target hit with positive net PnL', () => {
   assert.equal(trade.exitReason, 'target');
   assert.ok(trade.netPnL > 0);
   assert.ok(trade.r > 1.3, `Expected ~1.5R minus charges, got ${trade.r}R`);
+  assert.ok(trade.rNet < trade.r && trade.rNet > 1.2, 'rNet is the R after charges');
+  assert.strictEqual(trade.netPnLSlip, trade.netPnL, 'a target exit is not given extra slippage');
 });
 
 test('v5: square off at 15:15 exits remaining positions with reason "time"', () => {
@@ -241,4 +243,15 @@ test('v5: collect-everything mode has no trade or position limit; the limits ret
   on.state = on.fresh('2026-10-08');
   const all = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7'].filter(s => on.enterTrade(s, signal, { c: 100 }, score, now));
   assert.strictEqual(all.length, 7, 'no position or trade limit in collect-everything mode');
+});
+
+test('v5: a stop-out is also costed 0.25R worse in the slippage estimate, the paper fill itself stays ideal', () => {
+  const engine = new V5Engine({ v5Capital: 50000, riskPct: 1 });
+  engine.state = engine.fresh('2026-10-06');
+  engine.enterTrade('TEST', { setup: 'A', dir: 1, rawStop: 99.0, why: 'Breakout' }, { c: 100 }, { score: 80, parts: {} }, Date.now());
+  engine.managePositions({ TEST: 98.9 }, Date.now(), false);
+  const t = engine.state.closed[0];
+  assert.strictEqual(t.exitReason, 'stop');
+  assert.ok(Math.abs(t.exit - t.stop) < 1e-9, 'ideal fill unchanged');
+  assert.ok(t.rNetSlip < t.rNet - 0.2 && t.netPnLSlip < t.netPnL, 'slippage estimate is worse than the ideal fill');
 });
