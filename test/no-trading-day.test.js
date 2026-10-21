@@ -66,7 +66,7 @@ test('before the open, the automatic news call waits (the manual box is not show
 test('version 3.3: entries until 10:30 and backups until 10:30', () => {
   assert.strictEqual(base.lastEntryMin, 10 * 60 + 30);
   assert.strictEqual(base.replaceUntilMin, base.lastEntryMin);
-  assert.strictEqual(String(base.strategyVersion), '3.3');
+  assert.strictEqual(String(base.strategyVersion), '3.4');
 });
 
 test('universe archive waits for the close, and never runs on a non-trading day', async () => {

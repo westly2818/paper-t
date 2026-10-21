@@ -589,7 +589,7 @@ function renderV5(v){
   const tiles=[
     ['Capital',money(v.capital||50000,0)],
     ['Today Realized P&L','<b class="'+cls(v.realized||0)+'">'+sgn(v.realized||0,2)+'</b>'],
-    ['Trades Today',(v.tradesToday||0)+' / 6 max'],
+    ['Trades Today',(v.tradesToday||0)+(v.collectAll?' (no limit)':' / 6 max')],
     ['Phase',(v.phase||'idle').toUpperCase()]
   ];
   // Cards instead of wide tables: readable on a phone, and a grid on a desktop.

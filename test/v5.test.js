@@ -229,3 +229,16 @@ test('v5: no re-entry, a stock that already traded today is not entered again (e
   assert.ok(engine.enterTrade('OTHER', signal, { c: 100 }, score, now + 120000), 'another stock is still allowed');
   assert.ok(engine.enterTrade('TEST', signal, { c: 100 }, score, now + 86400000 * 1), 'next day it can trade again');
 });
+
+test('v5: collect-everything mode has no trade or position limit; the limits return when it is switched off', () => {
+  const signal = { setup: 'A', dir: 1, rawStop: 99.0, why: 'Breakout' }, score = { score: 90, parts: {} };
+  const now = Date.parse('2026-10-08T05:30:00Z');
+  const off = new V5Engine({ v5Capital: 50000, riskPct: 1, collectAll: false, v5MaxPositions: 3 });
+  off.state = off.fresh('2026-10-08');
+  const taken = ['A1', 'A2', 'A3', 'A4', 'A5'].filter(s => off.enterTrade(s, signal, { c: 100 }, score, now));
+  assert.strictEqual(taken.length, 3, 'limit of 3 open positions applies when the mode is off');
+  const on = new V5Engine({ v5Capital: 50000, riskPct: 1, collectAll: true, v5MaxPositions: 3, v5MaxTrades: 2 });
+  on.state = on.fresh('2026-10-08');
+  const all = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7'].filter(s => on.enterTrade(s, signal, { c: 100 }, score, now));
+  assert.strictEqual(all.length, 7, 'no position or trade limit in collect-everything mode');
+});

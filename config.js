@@ -6,7 +6,7 @@ module.exports = {
   // live   = real prices right now (only trades 9:15-15:30 IST on market days)
   // replay = re-plays a real, recent trading day (works any time, even weekends)
   // demo   = made-up prices, needs no internet (for testing)
-  strategyVersion: process.env.STRATEGY_VERSION || '3.3', // bump when you change rules, so later analysis can compare versions
+  strategyVersion: process.env.STRATEGY_VERSION || '3.4', // bump when you change rules, so later analysis can compare versions
   mode: process.env.MODE || 'replay',
   replayDay: process.env.DAY || null,      // YYYY-MM-DD, must be within the last ~7 days. Default: latest full session
   speed: num('SPEED', 60),                 // replay speed: 60 = one market minute per real second
@@ -70,6 +70,7 @@ module.exports = {
   // ---- risk ----
   riskPct: num('RISK_PCT', 1),             // MAX % of equity risked per trade; quantity = min(risk / stop distance, allocation cap / price), so the cap often makes real risk lower
   maxAllocPct: num('MAX_ALLOC', 50),       // max % of equity (x leverage) in one stock
+  collectAll: process.env.COLLECT_ALL !== '0',   // data-collection mode: no position or trade-count limits (day bot and V5); the daily loss limit stays
   maxPositions: num('MAX_POS', 3),
   maxTradesPerDay: num('MAX_TRADES', 6),
   dailyLossPct: num('DAILY_LOSS', 3),      // stop trading for the day at this loss
