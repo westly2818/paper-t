@@ -255,3 +255,29 @@ test('v5: a stop-out is also costed 0.25R worse in the slippage estimate, the pa
   assert.ok(Math.abs(t.exit - t.stop) < 1e-9, 'ideal fill unchanged');
   assert.ok(t.rNetSlip < t.rNet - 0.2 && t.netPnLSlip < t.netPnL, 'slippage estimate is worse than the ideal fill');
 });
+
+test('v5: collect-everything tags record what the old limits would have said at each entry, without changing which trades are taken', () => {
+  const signal = { setup: 'A', dir: 1, rawStop: 99.0, why: 'Breakout' }, score = { score: 90, parts: {} };
+  const now = Date.parse('2026-10-08T05:30:00Z');
+  const mk = collectAll => { const e = new V5Engine({ v5Capital: 50000, riskPct: 1, collectAll, v5MaxPositions: 3, v5MaxTrades: 4 }); e.state = e.fresh('2026-10-08'); return e; };
+  const on = mk(true);
+  const syms = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6'];
+  const taken = syms.map(s => on.enterTrade(s, signal, { c: 100 }, score, now));
+  assert.ok(taken.every(Boolean), 'all six are taken in collect-everything mode');
+  assert.deepStrictEqual(taken.map(p => p.openBefore), [0, 1, 2, 3, 4, 5]);
+  assert.deepStrictEqual(taken.map(p => p.tradesTodayBefore), [0, 1, 2, 3, 4, 5]);
+  assert.deepStrictEqual(taken.map(p => p.wouldBlockUnderOldLimits), [false, false, false, true, true, true], '3 open positions would have blocked the 4th onward');
+  // the tags must match what the limits actually do when the mode is off
+  const off = mk(false);
+  assert.deepStrictEqual(syms.filter(s => off.enterTrade(s, signal, { c: 100 }, score, now)), ['A1', 'A2', 'A3']);
+  // they survive into the closed-trade record that is saved
+  on.managePositions({ A4: 98.0 }, now + 60000, false);
+  const rec = on.state.closed.find(c => c.sym === 'A4');
+  assert.strictEqual(rec.wouldBlockUnderOldLimits, true); assert.strictEqual(rec.openBefore, 3); assert.strictEqual(rec.tradesTodayBefore, 3);
+  // trade-count limit alone also counts
+  const e2 = mk(true);
+  const one = e2.enterTrade('B1', signal, { c: 100 }, score, now); e2.managePositions({ B1: 98.0 }, now + 60000, false);   // 1 trade, closed: 0 open
+  e2.state.tradesToday = 4;
+  const late = e2.enterTrade('B2', signal, { c: 100 }, score, now + 120000);
+  assert.strictEqual(late.openBefore, 0); assert.strictEqual(late.wouldBlockUnderOldLimits, true, 'the 5th trade of the day exceeds the limit of 4 even with nothing open');
+});
