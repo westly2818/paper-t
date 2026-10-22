@@ -1,0 +1,35 @@
+{
+  "note": "Historical evidence used by cycle-report.js for gate G0. Each entry cites where the number comes from. Numbers are copied from docs/STUDY-GUIDE.md; when a source gives several values the LEAST negative one is used, so a rejection never rests on a worst-case pick.",
+  "strategies": {
+    "v5": {
+      "label": "Momentum V5 (paper)",
+      "hist": { "trades": 528000, "years": 8, "devAvgR": -0.111, "holdAvgR": -0.111, "source": "STUDY-GUIDE decision log 6 Oct: intraday-lab, parameters fixed before the run, 528k signals; score 70+: setup A -0.111R, B -0.185R, C -0.130R, every setup loses in development and holdout, t(day) -10 to -30" },
+      "caveat": "The lab tests the signal rules on every stock. V5's live pre-market ranking and news layer are not replayed historically; only live trades can show whether they change the sign."
+    },
+    "orb": {
+      "label": "Day bot, opening-range breakout (paper)",
+      "hist": { "trades": 387, "years": 2, "devAvgR": -0.08, "holdAvgR": -0.08, "source": "STUDY-GUIDE section 3: 494 sessions, 387 trades, -0.08R after charges; all-stocks version 9,841 trades -0.166R (signal before charges -0.026R); search for a selection rule found none" },
+      "caveat": null
+    },
+    "iss": {
+      "label": "ISS intraday short straddle (paper, real option quotes)",
+      "hist": null,
+      "requirement": "Only a Black-Scholes model exists (it passes the frozen rule but a calendar clock gives -104% a year, so the result depends on the clock and the volatility scale). Needs at least 30 forward trades on real quotes, stable across clock assumptions, with worst-day loss within the approved limit. Margin per straddle (reference Rs 2,00,000) must fit verified real capital."
+    },
+    "fno": {
+      "label": "F&O weekly NIFTY iron condor (paper)",
+      "hist": null,
+      "requirement": "Its risk is a rare large loss, so a few weeks prove nothing. Needs at least 30 expiries (about 7 months), the stop shown to work, and chain data complete."
+    },
+    "swing": {
+      "label": "Swing momentum portfolio (paper)",
+      "hist": null,
+      "requirement": "10-year daily test: 21.8% a year against Nifty 9.0%, but on today's Nifty 200 only (survivorship) and not proven better than holding the same stocks equally (+0.27% a month, interval includes zero). One decision a month: cannot be judged by results for years."
+    },
+    "ml": {
+      "label": "ML models (research, ml-trading repo)",
+      "hist": { "trades": 4558, "years": 2, "devAvgR": -0.0014, "holdAvgR": -0.0014, "source": "EXP-B-001: every candidate lost 13.7 to 14.7 bps per trade net (gross edge under 1 bp); earlier information tests the same. Value shown is in R-equivalent only for the table; the real figure is -13.7 bps" },
+      "requirement": "Frozen shadow model collecting forward data (not yet running); gate of 120 valid days with day-clustered intervals above zero (docs/SHADOW.md)."
+    }
+  }
+}
