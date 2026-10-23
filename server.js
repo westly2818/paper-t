@@ -93,7 +93,14 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
 }
 
 const fyersPage = (title, text, ok) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><body style="font-family:system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 16px"><h2 style="color:${ok ? '#0B8A5B' : '#D0402D'}">${title}</h2><p>${String(text).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))}</p><p><a href="/#data">Back to the app</a></p>${ok ? '<script>setTimeout(function(){location.href="/#data"},2500)</script>' : ''}</body>`;
-const send = (res, code, type, body) => { res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store' }); res.end(body); };
+// Render's free workspace allows 5 GB of outgoing traffic a month and suspends everything when it is used up. The dashboard page asks for the
+// 250 KB state again and again, so text answers are gzip-compressed (about 5x smaller) when the browser accepts it.
+const zlib = require('zlib');
+const send = (res, code, type, body) => {
+  const headers = { 'Content-Type': type, 'Cache-Control': 'no-store', Vary: 'Accept-Encoding' };
+  if (res.acceptsGzip && /^(application\/json|text\/)/.test(type) && Buffer.byteLength(body) > 1024) { body = zlib.gzipSync(body); headers['Content-Encoding'] = 'gzip'; }
+  res.writeHead(code, headers); res.end(body);
+};
 
 // Data tab: is everything being saved to the database? The Redis facts are cached for 15 minutes (a manual re-check is allowed once a
 // minute) so the page can poll often; the "last saved" heartbeat is recomputed live on every request.
@@ -108,6 +115,7 @@ async function dbHealth(fresh) {
 }
 
 const server = http.createServer((req, res) => {
+  res.acceptsGzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
   const url = new URL(req.url, 'http://x');
   if (url.pathname === '/api/dbhealth') return dbHealth(url.searchParams.get('fresh') === '1').then(d => send(res, 200, 'application/json', JSON.stringify(d))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message })));
   if (url.pathname === '/api/state') return send(res, 200, 'application/json', JSON.stringify(engine.snapshot()));

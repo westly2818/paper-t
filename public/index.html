@@ -636,7 +636,7 @@ function renderV5(v){
     '<h3 style="margin:16px 0 4px;font-size:.95rem">V5 Activity Log</h3>'+evList+
     '<p class="why" style="margin-top:10px"><a href="/api/v5/trades.json" target="_blank">Download V5 Trade Journal (JSON)</a> &middot; <a href="/api/v5" target="_blank">Raw V5 State API</a></p>';
 }
-setInterval(()=>{const p=document.querySelector('.panel.on');if(p&&p.dataset.panel==='momentum')loadMbook();if(p&&p.dataset.panel==='movers')loadMovers();if(p&&p.dataset.panel==='v5')loadV5();if(p&&p.dataset.panel==='fno')loadFno();if(p&&p.dataset.panel==='iss')loadIss();if(p&&p.dataset.panel==='mlshadow')loadMl();if(p&&['iss','fno','data'].includes(p.dataset.panel))loadFyers();},15000);
+setInterval(()=>{if(document.hidden)return;const p=document.querySelector('.panel.on');if(p&&p.dataset.panel==='momentum')loadMbook();if(p&&p.dataset.panel==='movers')loadMovers();if(p&&p.dataset.panel==='v5')loadV5();if(p&&p.dataset.panel==='fno')loadFno();if(p&&p.dataset.panel==='iss')loadIss();if(p&&p.dataset.panel==='mlshadow')loadMl();if(p&&['iss','fno','data'].includes(p.dataset.panel))loadFyers();},15000);
 function showTab(t){
   if(!document.querySelector('[data-panel="'+t+'"]'))t='overview';
   document.querySelectorAll('[data-panel]').forEach(p=>p.classList.toggle('on',p.dataset.panel===t));
@@ -804,7 +804,7 @@ function render(s){
 }
 {const _render=render;render=function(s){_render(s);restoreOpen();};}
 initTabs();
-async function tick(){try{const r=await fetch('/api/state',{cache:'no-store'});render(await r.json());}catch(e){$('err').innerHTML='<div class="err">Cannot reach the bot. Is it still running in your terminal?</div>';}}
+async function tick(){if(document.hidden)return;try{const r=await fetch('/api/state',{cache:'no-store'});render(await r.json());}catch(e){$('err').innerHTML='<div class="err">Cannot reach the bot. Is it still running in your terminal?</div>';}}
 const ctl=(action,value)=>fetch('/api/control',{method:'POST',body:JSON.stringify({action,value})}).then(tick);
 async function submitNews(){
   $('newsErr').textContent='';
@@ -819,8 +819,9 @@ $('bPause').onclick=()=>ctl(last&&last.paused?'resume':'pause');
 $('bRestart').onclick=()=>ctl('restart');
 document.querySelectorAll('[data-sp]').forEach(b=>b.onclick=()=>ctl('speed',+b.dataset.sp));
 addEventListener('resize',()=>last&&chart(last));
-tick();setInterval(tick,1500);
-loadDbHealth();setInterval(()=>loadDbHealth(false),60000);
+// The bot looks at prices every 20 seconds, so asking more often only burns the hosting bandwidth limit. Nothing is fetched while the tab is hidden.
+tick();setInterval(tick,10000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick();});
+loadDbHealth();setInterval(()=>{if(!document.hidden)loadDbHealth(false);},60000);
 </script>
 </body>
 </html>
