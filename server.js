@@ -96,6 +96,7 @@ const fyersPage = (title, text, ok) => `<!doctype html><meta charset="utf-8"><me
 // Render's free workspace allows 5 GB of outgoing traffic a month and suspends everything when it is used up. The dashboard page asks for the
 // 250 KB state again and again, so text answers are gzip-compressed (about 5x smaller) when the browser accepts it.
 const zlib = require('zlib');
+const sha256 = x => require('crypto').createHash('sha256').update(x).digest();
 const send = (res, code, type, body) => {
   const headers = { 'Content-Type': type, 'Cache-Control': 'no-store', Vary: 'Accept-Encoding' };
   if (res.acceptsGzip && /^(application\/json|text\/)/.test(type) && Buffer.byteLength(body) > 1024) { body = zlib.gzipSync(body); headers['Content-Encoding'] = 'gzip'; }
@@ -117,7 +118,16 @@ async function dbHealth(fresh) {
 const server = http.createServer((req, res) => {
   res.acceptsGzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
   const url = new URL(req.url, 'http://x');
+  // Optional password for the whole app (set DASH_PASSWORD, and DASH_USER if you do not want 'admin'). The uptime check /health stays open.
+  if (process.env.DASH_PASSWORD && url.pathname !== '/health') {
+    const want = [process.env.DASH_USER || 'admin', process.env.DASH_PASSWORD];
+    const h = req.headers.authorization || '';
+    const got = h.startsWith('Basic ') ? Buffer.from(h.slice(6), 'base64').toString().split(/:(.*)/s) : [];
+    const same = (x, y) => require('crypto').timingSafeEqual(sha256(String(x)), sha256(String(y)));
+    if (!(got.length >= 2 && same(got[0], want[0]) && same(got[1], want[1]))) { res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="paper-trader"', 'Content-Type': 'text/plain' }); return res.end('Login required'); }
+  }
   if (url.pathname === '/api/dbhealth') return dbHealth(url.searchParams.get('fresh') === '1').then(d => send(res, 200, 'application/json', JSON.stringify(d))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message })));
+  if (url.pathname === '/health') return send(res, 200, 'text/plain', 'ok');   // tiny answer for uptime monitors (UptimeRobot): 2 bytes instead of the 90 KB page
   if (url.pathname === '/api/state') return send(res, 200, 'application/json', JSON.stringify(engine.snapshot()));
   if (url.pathname === '/api/journal.csv') { res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="journal.csv"' }); return res.end(toCsv(engine.S.closed)); }
   if (url.pathname.startsWith('/api/export/')) {
