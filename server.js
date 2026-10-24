@@ -88,6 +88,7 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
     try { if (movers && movers.state) await movers.save(); } catch (e) { console.error('Movers shutdown save failed:', e.message); }
     try { if (mbook && mbook.state) await mbook.save(); } catch (e) { console.error('Momentum book shutdown save failed:', e.message); }
     try { await engine.flush(); await engine.save(); } catch (e) { console.error('Shutdown save failed:', e.message); }
+    try { await bw.save(bwStore, true); } catch (e) { /* counter only */ }
     process.exit(0);
   });
 }
@@ -95,10 +96,18 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
 const fyersPage = (title, text, ok) => `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><body style="font-family:system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 16px"><h2 style="color:${ok ? '#0B8A5B' : '#D0402D'}">${title}</h2><p>${String(text).replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))}</p><p><a href="/#data">Back to the app</a></p>${ok ? '<script>setTimeout(function(){location.href="/#data"},2500)</script>' : ''}</body>`;
 // Render's free workspace allows 5 GB of outgoing traffic a month and suspends everything when it is used up. The dashboard page asks for the
 // 250 KB state again and again, so text answers are gzip-compressed (about 5x smaller) when the browser accepts it.
+const { BandwidthMeter, meterResponse, meterFetch, Gate } = require('./lib/usage');
+const { Store: UsageStore } = require('./lib/store');
+const bw = new BandwidthMeter({ budgetGb: Number(process.env.BW_BUDGET_GB) || 4 });
+const bwGate = new Gate(bw);
+const bwStore = new UsageStore(cfg, 'usage');
+meterFetch(bw);
+bw.load(bwStore).catch(() => {});
+setInterval(() => { bw.save(bwStore).catch(() => {}); }, 5 * 60000);
 const zlib = require('zlib');
 const sha256 = x => require('crypto').createHash('sha256').update(x).digest();
 const send = (res, code, type, body) => {
-  const headers = { 'Content-Type': type, 'Cache-Control': 'no-store', Vary: 'Accept-Encoding' };
+  const headers = { 'Content-Type': type, 'Cache-Control': 'no-store', Vary: 'Accept-Encoding', 'X-Poll-Ms': String(bw.pollMs()), 'X-Bw-Mode': bw.mode() };
   if (res.acceptsGzip && /^(application\/json|text\/)/.test(type) && Buffer.byteLength(body) > 1024) { body = zlib.gzipSync(body); headers['Content-Encoding'] = 'gzip'; }
   res.writeHead(code, headers); res.end(body);
 };
@@ -117,6 +126,7 @@ async function dbHealth(fresh) {
 
 const server = http.createServer((req, res) => {
   res.acceptsGzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+  meterResponse(bw, res);
   const url = new URL(req.url, 'http://x');
   // Optional password for the whole app (set DASH_PASSWORD, and DASH_USER if you do not want 'admin'). The uptime check /health stays open.
   if (process.env.DASH_PASSWORD && url.pathname !== '/health') {
@@ -125,6 +135,12 @@ const server = http.createServer((req, res) => {
     const got = h.startsWith('Basic ') ? Buffer.from(h.slice(6), 'base64').toString().split(/:(.*)/s) : [];
     const same = (x, y) => require('crypto').timingSafeEqual(sha256(String(x)), sha256(String(y)));
     if (!(got.length >= 2 && same(got[0], want[0]) && same(got[1], want[1]))) { res.writeHead(401, { 'WWW-Authenticate': 'Basic realm="paper-trader"', 'Content-Type': 'text/plain' }); return res.end('Login required'); }
+  }
+  if (url.pathname === '/api/usage') return send(res, 200, 'application/json', JSON.stringify(bw.snapshot()));
+  const blocked = bwGate.check(url.pathname, String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim(), req.method);
+  if (blocked) {
+    res.writeHead(blocked.code, { 'Content-Type': url.pathname === '/' || url.pathname === '/index.html' ? 'text/html; charset=utf-8' : 'application/json', 'Retry-After': String(blocked.retryAfter), 'Cache-Control': 'no-store', 'X-Poll-Ms': String(bw.pollMs()), 'X-Bw-Mode': bw.mode() });
+    return res.end(url.pathname === '/' || url.pathname === '/index.html' ? `<!doctype html><meta charset="utf-8"><title>Paused</title><body style="font-family:system-ui;max-width:32rem;margin:3rem auto;padding:0 1rem"><h3>Dashboard paused</h3><p>${blocked.body.message}</p><p>Used ${(bw.snapshot().gb)} GB of the ${bw.snapshot().budgetGb} GB budget this month.</p>` : JSON.stringify(blocked.body));
   }
   if (url.pathname === '/api/dbhealth') return dbHealth(url.searchParams.get('fresh') === '1').then(d => send(res, 200, 'application/json', JSON.stringify(d))).catch(e => send(res, 500, 'application/json', JSON.stringify({ error: e.message })));
   if (url.pathname === '/health') return send(res, 200, 'text/plain', 'ok');   // tiny answer for uptime monitors (UptimeRobot): 2 bytes instead of the 90 KB page

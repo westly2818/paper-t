@@ -804,7 +804,10 @@ function render(s){
 }
 {const _render=render;render=function(s){_render(s);restoreOpen();};}
 initTabs();
-async function tick(){if(document.hidden)return;try{const r=await fetch('/api/state',{cache:'no-store'});render(await r.json());}catch(e){$('err').innerHTML='<div class="err">Cannot reach the bot. Is it still running in your terminal?</div>';}}
+function bwBanner(mode,usage){let b=document.getElementById('bwBanner');if(!b){b=document.createElement('div');b.id='bwBanner';b.style.cssText='position:sticky;top:0;z-index:9;padding:8px 14px;font:14px system-ui;color:#fff;display:none';document.body.prepend(b);}
+  if(mode==='normal'||!mode){b.style.display='none';return;}b.style.display='block';b.style.background=mode==='protect'?'#b91c1c':'#b8860b';
+  b.textContent=mode==='protect'?'Dashboard paused: the monthly bandwidth budget is used up. Trading and saving continue; it resumes next month.':'Bandwidth budget over 60% used this month: the dashboard now refreshes every minute to avoid Render suspending the app.';}
+async function tick(){if(document.hidden)return;try{const r=await fetch('/api/state',{cache:'no-store'});const pm=+r.headers.get('x-poll-ms');if(pm)window.__pollMs=pm;bwBanner(r.headers.get('x-bw-mode'));if(r.status===429||r.status===503)return;render(await r.json());}catch(e){$('err').innerHTML='<div class="err">Cannot reach the bot. Is it still running in your terminal?</div>';}}
 const ctl=(action,value)=>fetch('/api/control',{method:'POST',body:JSON.stringify({action,value})}).then(tick);
 async function submitNews(){
   $('newsErr').textContent='';
@@ -820,7 +823,7 @@ $('bRestart').onclick=()=>ctl('restart');
 document.querySelectorAll('[data-sp]').forEach(b=>b.onclick=()=>ctl('speed',+b.dataset.sp));
 addEventListener('resize',()=>last&&chart(last));
 // The bot looks at prices every 20 seconds, so asking more often only burns the hosting bandwidth limit. Nothing is fetched while the tab is hidden.
-tick();setInterval(tick,10000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick();});
+tick();(function pollNext(){setTimeout(async()=>{await tick();pollNext();},window.__pollMs||10000);})();document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick();});
 loadDbHealth();setInterval(()=>{if(!document.hidden)loadDbHealth(false);},60000);
 </script>
 </body>
