@@ -48,3 +48,4 @@ Cycle outcome: NO TRADE TODAY. No strategy is eligible for real capital.
 
 ## Change log
 - 22 Oct 2026: gate locked; dispositions issued.
+- 13 Nov 2026: V5 reached 124 forward trades: -0.039R after charges and slippage, day-clustered t -0.19, second half -0.14R. REJECT confirmed; it is no longer a capital candidate (it keeps running as a free paper measurement). Day bot: 18 trades, -0.35R, REJECT confirmed. No thresholds were changed. Across all research so far (about 15 intraday rule sets, the factor composite, the ML experiments) nothing has beaten its costs; the only signals with a positive gross edge (factor composite, 6%+ movers) were absorbed by charges.
